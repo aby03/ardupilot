@@ -169,6 +169,11 @@ Mode *Copter::mode_from_mode_num(const Mode::Number mode)
             break;
 #endif
 
+		// CUSTOM
+        case Mode::Number::NEW_CONTROL:
+            ret = &mode_new_control;
+            break;
+
         default:
             break;
     }

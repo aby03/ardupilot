@@ -238,11 +238,19 @@ void Copter::fast_loop()
     // update INS immediately to get current gyro data populated
     ins.update();
 
-    // run low level rate controllers that only require IMU data
-    attitude_control->rate_controller_run();
+	// mode_new_control.update_motors(); 	// Custom Controller Loop
 
-    // send outputs to the motors library immediately
-    motors_output();
+	if (control_mode != Mode::Number::NEW_CONTROL){
+		// run low level rate controllers that only require IMU data
+		attitude_control->rate_controller_run();
+		
+		// send outputs to the motors library immediately
+		motors_output();	// ORIGINAL
+	}else{
+		// CUSTOM
+		// Call Custom Controller funtion
+		mode_new_control.update_motors(); 	// Custom Controller Loop
+	}
 
     // run EKF state estimator (expensive)
     // --------------------
@@ -608,14 +616,14 @@ void Copter::publish_osd_info()
 Copter::Copter(void)
     : logger(g.log_bitmask),
     flight_modes(&g.flight_mode1),
-    control_mode(Mode::Number::STABILIZE),
+    control_mode(Mode::Number::NEW_CONTROL),		// CUSTOM: CHANGED from STABILIZE to NEW_CONTROL
     simple_cos_yaw(1.0f),
     super_simple_cos_yaw(1.0),
     land_accel_ef_filter(LAND_DETECTOR_ACCEL_LPF_CUTOFF),
     rc_throttle_control_in_filter(1.0f),
     inertial_nav(ahrs),
     param_loader(var_info),
-    flightmode(&mode_stabilize)
+    flightmode(&mode_new_control)
 {
     // init sensor error logging flags
     sensor_health.baro = true;
