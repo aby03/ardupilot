@@ -238,19 +238,20 @@ void Copter::fast_loop()
     // update INS immediately to get current gyro data populated
     ins.update();
 
-	// mode_new_control.update_motors(); 	// Custom Controller Loop
+	mode_new_control.update_motors(); 	// Custom Controller Loop
 
-	if (control_mode != Mode::Number::NEW_CONTROL){
-		// run low level rate controllers that only require IMU data
-		attitude_control->rate_controller_run();
+	// TO FIX: Auto Mode Changed
+	// if (control_mode != Mode::Number::NEW_CONTROL){
+		// // run low level rate controllers that only require IMU data
+		// attitude_control->rate_controller_run();
 		
-		// send outputs to the motors library immediately
-		motors_output();	// ORIGINAL
-	}else{
-		// CUSTOM
-		// Call Custom Controller funtion
-		mode_new_control.update_motors(); 	// Custom Controller Loop
-	}
+		// // send outputs to the motors library immediately
+		// motors_output();	// ORIGINAL
+	// }else{
+		// // CUSTOM
+		// // Call Custom Controller funtion
+		// mode_new_control.update_motors(); 	// Custom Controller Loop
+	// }
 
     // run EKF state estimator (expensive)
     // --------------------
