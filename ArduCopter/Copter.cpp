@@ -223,6 +223,8 @@ void Copter::setup()
 
     // initialise the main loop scheduler
     scheduler.init(&scheduler_tasks[0], ARRAY_SIZE(scheduler_tasks), MASK_LOG_PM);
+
+    mode_new_control.init(true);
 }
 
 void Copter::loop()
@@ -242,15 +244,15 @@ void Copter::fast_loop()
 
 	// TO FIX: Auto Mode Changed
 	// if (control_mode != Mode::Number::NEW_CONTROL){
-		// // run low level rate controllers that only require IMU data
-		// attitude_control->rate_controller_run();
+	// 	// run low level rate controllers that only require IMU data
+	// 	attitude_control->rate_controller_run();
 		
-		// // send outputs to the motors library immediately
-		// motors_output();	// ORIGINAL
+	// 	// send outputs to the motors library immediately
+	// 	motors_output();	// ORIGINAL
 	// }else{
-		// // CUSTOM
-		// // Call Custom Controller funtion
-		// mode_new_control.update_motors(); 	// Custom Controller Loop
+	// 	// CUSTOM
+	// 	// Call Custom Controller funtion
+	// 	mode_new_control.update_motors(); 	// Custom Controller Loop
 	// }
 
     // run EKF state estimator (expensive)
