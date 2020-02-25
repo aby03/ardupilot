@@ -274,13 +274,13 @@ void Copter::fast_loop()
     check_ekf_reset();
 
     // run the attitude controllers
-    update_flight_mode();
+    //update_flight_mode();
 
     // update home from EKF if necessary
     update_home_from_EKF();
 
     // check if we've landed or crashed
-    update_land_and_crash_detectors();
+    //update_land_and_crash_detectors();
 
 #if MOUNT == ENABLED
     // camera mount's fast update

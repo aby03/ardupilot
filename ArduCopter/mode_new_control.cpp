@@ -9,11 +9,15 @@
 // COMMANDS: To set roll pitch
 // channel_roll->set_control_in(<float value>);   channel_pitch->set_control_in(<float value>);   channel_yaw->set_control_in(<float value>);
 	
+//const AP_InertialNav&       _inav;
+//const AP_InertialNav&       inav;
+//_inav(inav);
 
 // REMOVE LATER
 int roll_i = 0, pitch_i = 1, yaw_i = 2, throttle_i = 3;
 int roll_rate_i = 4, pitch_rate_i = 5, yaw_rate_i = 6;
 int A = 0, B = 1, C = 2, D = 3;
+int loop = 0;
 float target[7];
 float current[7]; // , current_rate[7];
 float pulse_width[4];
@@ -46,7 +50,7 @@ bool ModeNewControl::init(bool ignore_checks)
 	// current[throttle_i] = 1500;
 	// return true;
 	// PID Parameters
-	kp[roll_i] = 1;
+	kp[roll_i] = 0.01;
 	kp[pitch_i] = 0;
 	kp[yaw_i] = 0;
 	kp[roll_rate_i] = 0;
@@ -55,7 +59,7 @@ bool ModeNewControl::init(bool ignore_checks)
 	
 	kd[roll_i] = 0;
 	kd[pitch_i] = 0;
-	kd[yaw_i] = 0;
+	kd[yaw_i] = 0.03;
 	kd[roll_rate_i] = 0;
 	kd[pitch_rate_i] = 0;
 	kd[yaw_rate_i] = 0;
@@ -94,7 +98,7 @@ bool ModeNewControl::init(bool ignore_checks)
 		pid[i] = 0;
 	}
 
-	current[throttle_i] = 1600;
+	current[throttle_i] = 1800;
 	// Error Range
 	// error_min[roll_i] = -400;
 	// error_min[pitch_i] = -400;
@@ -181,12 +185,18 @@ void ModeNewControl::run()
 
 void ModeNewControl::update_motors()
 {
+	loop += 1;
 	// target[roll_i] = target_roll;
 	// target[pitch_i] = target_pitch;
 	// target[yaw_rate_i] = target_yaw_rate;
 	// target[throttle_i] = channel_throttle->get_control_in();
-	
-	target[roll_i] = 20;
+	//printf("Altitude %f \n", inertial_nav.get_altitude());
+	//printf("Loop %d \n",loop);
+	if(loop > 5000)
+	{	
+		//printf("Target roll set");
+		target[roll_i] = 10;
+	}
 
 	//// 1. Get AHRS reading (all angles in radians/seconds)
 	Vector3f gyro_latest = ahrs.get_gyro_latest();
@@ -301,6 +311,9 @@ void ModeNewControl::update_motors()
 	pulse_width[C] = current[throttle_i] - pid[pitch_i] - pid[yaw_i];		// Front
 	pulse_width[D] = current[throttle_i] + pid[pitch_i] - pid[yaw_i];		// Back	
 
+	//printf("PID Roll i %f, %f\n",pid[roll_i],error[roll_i]);
+
+
 	if(pulse_width[A] > pulse_width_max[A])
 	{	pulse_width[A] = pulse_width_max[A];	}
 	if(pulse_width[A] < pulse_width_min[A])
@@ -332,4 +345,6 @@ void ModeNewControl::update_motors()
     SRV_Channels::cork();				// cork now, so that all channel outputs happen at once
     SRV_Channels::output_ch_all();		// update output on any aux channels, for manual passthru
     SRV_Channels::push();				// push all channels	
+
+
 }
