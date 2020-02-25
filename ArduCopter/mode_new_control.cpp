@@ -3,6 +3,9 @@
 #include <AP_Motors/AP_MotorsMulticopter.h>
 #include <AP_Motors/AP_Motors.h>
 
+// #include <fstream>
+// #include <iostream>
+
 // COMMANDS: To get roll pitch yaw, throttle
 // channel_roll->get_control_in();   channel_pitch->get_control_in();   channel_yaw->get_control_in();  channel_throttle->get_control_in();   get_pilot_desired_throttle()
 
@@ -12,6 +15,13 @@
 //const AP_InertialNav&       _inav;
 //const AP_InertialNav&       inav;
 //_inav(inav);
+
+
+/*
+./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=192.168.184.1./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=127.0.0.1
+*/
+FILE *fptr;
+// ofstream outfile;
 
 // REMOVE LATER
 int roll_i = 0, pitch_i = 1, yaw_i = 2, throttle_i = 3;
@@ -41,18 +51,21 @@ float target_roll, target_pitch, target_yaw_rate, target_throt;
 float cur_roll, cur_pitch, cur_yaw, cur_yaw_rate, cur_throt;
 float err_roll, err_pitch, err_yaw, err_yaw_rate, err_throt;
 
-
+int loop = 0;
 /*
  * Init and run calls for stabilize flight mode
  */
 bool ModeNewControl::init(bool ignore_checks)
 {
+	// outfile.open("custom.log");	
+	fptr = fopen("custom.log","w");
 	// current[throttle_i] = 1500;
 	// return true;
 	// PID Parameters
-	kp[roll_i] = 0.01;
+
+	kp[roll_i] = 0;
 	kp[pitch_i] = 0;
-	kp[yaw_i] = 0;
+	kp[yaw_i] = 0.01;
 	kp[roll_rate_i] = 0;
 	kp[pitch_rate_i] = 0;
 	kp[yaw_rate_i] = 0;
@@ -98,7 +111,7 @@ bool ModeNewControl::init(bool ignore_checks)
 		pid[i] = 0;
 	}
 
-	current[throttle_i] = 1800;
+	current[throttle_i] = 1700;
 	// Error Range
 	// error_min[roll_i] = -400;
 	// error_min[pitch_i] = -400;
@@ -185,18 +198,27 @@ void ModeNewControl::run()
 
 void ModeNewControl::update_motors()
 {
-	loop += 1;
 	// target[roll_i] = target_roll;
 	// target[pitch_i] = target_pitch;
 	// target[yaw_rate_i] = target_yaw_rate;
 	// target[throttle_i] = channel_throttle->get_control_in();
 	//printf("Altitude %f \n", inertial_nav.get_altitude());
 	//printf("Loop %d \n",loop);
-	if(loop > 5000)
-	{	
-		//printf("Target roll set");
-		target[roll_i] = 10;
+	loop += 1;
+
+	if (loop > 1000)
+	{
+		target[yaw_i] = 20;
+		loop = 0;
 	}
+	
+
+	fprintf(fptr,"Target: %f Current: %f\n", target[yaw_i], current[yaw_i]);
+	// outfile << "Current: " << current[yaw_i] << " Target: " << target[yaw_i];
+	AP::logger().Write("PVPD", "Target,Current", "ff",
+                                        (double)target[yaw_i],
+                                        (double)current[yaw_i]);
+
 
 	//// 1. Get AHRS reading (all angles in radians/seconds)
 	Vector3f gyro_latest = ahrs.get_gyro_latest();
