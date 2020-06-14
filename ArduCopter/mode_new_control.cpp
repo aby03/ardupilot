@@ -197,7 +197,11 @@ void ModeNewControl::run()
                                        // g.throttle_filt)
 	
 	// Custom Controller Loop
-	update_motors();
+	// update_motors();
+	loop += 1;
+	if (loop % 100 == 0){
+		printf("R: %f P: %f Y: %f T: %f\n", target_roll, target_pitch, target_yaw_rate, get_pilot_desired_throttle()); // change
+	}
 }
 
 void ModeNewControl::update_motors()
@@ -206,53 +210,32 @@ void ModeNewControl::update_motors()
     { 
 		loop += 1;
 
-		if(loop > 5000)
-		{
-			current[throttle_i] = 1800;
-		}
-
-		if (loop > 10000)
-		{
-			target[pitch_i] = 10; // change
-			target[roll_i] = 10;
-			//loop = 0;
-		}
-		if(loop > 11000)
-		{
-			target[yaw_i] = 10; 
-		}
-		if(loop > 12000)
-		{
-			target[roll_i] = 0;
-		}
-
-		if (loop % 100 == 0){
-			fprintf(fptr,"Target: %f Current: %f\n", target[pitch_i], current[pitch_i]); // change
-		}
-
-		if (loop % 100 == 0){
-			printf("Target: %f Current: %f\n", target[pitch_i], current[pitch_i]); // change
-		}
+		// // Write for tuning
+		// if (loop % 100 == 0){
+		// 	fprintf(fptr,"Target: %f Current: %f\n", target[pitch_i], current[pitch_i]); // change
+		// }
+		// if (loop % 100 == 0){
+		// 	printf("Target: %f Current: %f\n", target[pitch_i], current[pitch_i]); // change
+		// }
 		// outfile << "Current: " << current[yaw_i] << " Target: " << target[yaw_i];
-		AP::logger().Write("PVPD", "Target,Current", "ff",
-	                                        (double)target[yaw_i],
-	                                        (double)current[yaw_i]);
+		// AP::logger().Write("PVPD", "Target,Current", "ff",
+	    //                                     (double)target[yaw_i],
+	    //                                     (double)current[yaw_i]);
 
-
-		// target[roll_i] = target_roll;
-		// target[pitch_i] = target_pitch;
-		// target[yaw_rate_i] = target_yaw_rate;
-		// target[throttle_i] = channel_throttle->get_control_in();
+		//// 1. Get Target Attitude
+		target[roll_i] = target_roll;
+		target[pitch_i] = target_pitch;
+		target[yaw_rate_i] = target_yaw_rate;
+		target[throttle_i] = channel_throttle->get_control_in();
 		//printf("Altitude %f \n", inertial_nav.get_altitude());
 		//printf("Loop %d \n",loop);
-		
+
 		//// 1. Get AHRS reading (all angles in radians/seconds)
 		Vector3f gyro_latest = ahrs.get_gyro_latest();
 		current[roll_rate_i] = ToDeg(gyro_latest.x); 		// ahrs.get_roll();
 		current[pitch_rate_i] = ToDeg(gyro_latest.y); 		// ahrs.get_pitch();
 		current[yaw_rate_i] = ToDeg(gyro_latest.z); // absolute yaw using compass (not sure)
 		// current_rate[yaw_rate_i] = ahrs.get_yaw_rate_earth(); 	// in rads/sec
-		
 		current[roll_i] = ToDeg(ahrs.get_roll());
 		current[pitch_i] = ToDeg(ahrs.get_pitch());
 		current[yaw_i] = ToDeg(ahrs.get_yaw());
