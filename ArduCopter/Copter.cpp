@@ -233,7 +233,7 @@ void Copter::loop()
     G_Dt = scheduler.get_last_loop_time_s();
 }
 
-
+int lop = 0;
 // Main loop - 400hz
 void Copter::fast_loop()
 {
@@ -241,18 +241,23 @@ void Copter::fast_loop()
     ins.update();
 
 	// mode_new_control.update_motors(); 	// Custom Controller Loop
-
+    lop += 1;
 	// TO FIX: Auto Mode Changed
 	if (control_mode != Mode::Number::NEW_CONTROL){
 		// Original
         // run low level rate controllers that only require IMU data
 		attitude_control->rate_controller_run();
-		
+		if (lop % 100 == 0){
+            printf("NO\n");
+        }
 		// send outputs to the motors library immediately
 		motors_output();
 	}else{
 		// CUSTOM - To override motor controller
 		// Call Custom Controller funtion
+		if (lop % 100 == 0){
+            printf("YES\n");
+        }
 		mode_new_control.update_motors(); 	// Custom Controller Loop
 	}
 
@@ -275,7 +280,7 @@ void Copter::fast_loop()
     check_ekf_reset();
 
     // run the attitude controllers
-    //update_flight_mode();
+    update_flight_mode();
 
     // update home from EKF if necessary
     update_home_from_EKF();
