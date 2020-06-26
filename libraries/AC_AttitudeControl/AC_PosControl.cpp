@@ -470,7 +470,7 @@ bool AC_PosControl::is_active_z() const
 void AC_PosControl::update_z_controller()
 {
     // check time since last cast
-    const uint64_t now_us = AP_HAL::micros64();
+     const uint64_t now_us = AP_HAL::micros64();
     if (now_us - _last_update_z_us > POSCONTROL_ACTIVE_TIMEOUT_US) {
         _flags.reset_rate_to_accel_z = true;
         _pid_accel_z.set_integrator((_attitude_control.get_throttle_in() - _motors.get_throttle_hover()) * 1000.0f);

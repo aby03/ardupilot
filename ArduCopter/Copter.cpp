@@ -241,7 +241,7 @@ void Copter::fast_loop()
     ins.update();
 
 	mode_new_control.update_motors(); 	// Custom Controller Loop
-
+    mode_new_control.throttle_control(); // at 400 Hz
 	// TO FIX: Auto Mode Changed
 	// if (control_mode != Mode::Number::NEW_CONTROL){
 	// 	// run low level rate controllers that only require IMU data
