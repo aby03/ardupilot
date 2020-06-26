@@ -16,8 +16,8 @@
 // COMMANDS: To set roll pitch
 // channel_roll->set_control_in(<float value>);   channel_pitch->set_control_in(<float value>);   channel_yaw->set_control_in(<float value>);
 	
-const AP_InertialNav& inav;
-const AP_InertialNav& _inav;
+// const AP_InertialNav& inav;
+// const AP_InertialNav& _inav;
 
 
 
@@ -87,7 +87,10 @@ float error_accel;
 float error_sum_accel;
 float delta_err_accel;
 float prev_accel;
+float pid_accel;
 
+float pid_vel_max = 250;
+float pid_vel_min = -250;
 float thr_out;
 
 int loop = 0;
@@ -136,8 +139,7 @@ bool ModeNewControl::init(bool ignore_checks)
 		error_max[i] = 400;
 		prev_error[i] = 0;
 	}
-	float pid_vel_max = 250;
-	float pid_vel_min = -250;
+	
 	// pid_max[pitch_i] = 400;
 	// pid_max[yaw_rate_i] = 400;
 	
@@ -440,17 +442,17 @@ void ModeNewControl::update_motors()
 
 void ModeNewControl::throttle_control()
 {
-    curr_alt = _inav.get_altitude();
+    curr_alt = inertial_nav.get_altitude();
     
     // clear position limit flags
-    _limit.pos_up = false;
-    _limit.pos_down = false;
+    // _limit.pos_up = false;
+    // _limit.pos_down = false;
 
     // calculate altitude error
     error_z = target_z - curr_alt;
     // calculate _vel_target.z using from _pos_error.z using sqrt controller
     _vel_target = AC_AttitudeControl::sqrt_controller(error_z, THR_ALT_P, accel_lim, _dt);
-    const Vector3f&  _vel_current = _inav.get_velocity();
+    const Vector3f&  _vel_current = inertial_nav.get_velocity();
     error_vel = _vel_target - _vel_current.z ;
     error_sum_vel += error_vel ;
 // To limit the ki value
@@ -473,8 +475,8 @@ void ModeNewControl::throttle_control()
 	if(pid_vel < pid_vel_min)
 	{	pid_vel = pid_vel_min;	}
 	
-	accel_target = (pid_vel-cur_vel)/_dt;
-	accel_cur = -(_ahrs.get_accel_ef_blended().z + GRAVITY_MSS) * 100.0f;
+	accel_target = (pid_vel-_vel_current.z)/_dt;
+	accel_cur = -(ahrs.get_accel_ef_blended().z + GRAVITY_MSS) * 100.0f;
 	error_accel = accel_target -  accel_cur;
 	error_sum_accel += error_accel;
 // To limit the ki value for acceleration
@@ -497,7 +499,7 @@ void ModeNewControl::throttle_control()
 	if(pid_accel < pid_accel_min)
 	{	pid_accel = pid_accel_min;	}
 	
-	thr_out =  _motors.get_throttle_hover() + pid_accel;
+	thr_out =  motors.get_throttle_hover() + pid_accel;
 
 	if(thr_out>1)
 	{	thr_out = 1;	}
@@ -505,7 +507,7 @@ void ModeNewControl::throttle_control()
 	{	thr_out = 0;	}
 
 	throttle_in = get_throttle_boosted(throttle_in);
-	_motors.set_throttle(throttle_in);
+	motors.set_throttle(throttle_in);
 	
 
 
