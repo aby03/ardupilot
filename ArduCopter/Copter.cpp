@@ -230,6 +230,7 @@ void Copter::setup()
 void Copter::loop()
 {
     scheduler.loop();
+    mode_new_control.throttle_control();
     G_Dt = scheduler.get_last_loop_time_s();
 }
 
@@ -239,7 +240,7 @@ void Copter::fast_loop()
 {
     // update INS immediately to get current gyro data populated
     ins.update();
-    mode_new_control.throttle_control();
+    
 	mode_new_control.PID_motors(); 	// Custom Controller Loop
      // at 400 Hz
 	// TO FIX: Auto Mode Changed

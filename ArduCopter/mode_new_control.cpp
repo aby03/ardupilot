@@ -244,8 +244,8 @@ void ModeNewControl::run()
                                        // g.throttle_filt)
 	
 	// Custom Controller Loop
-
-	PID_motors();
+    throttle_control();
+	//PID_motors();
 }
 
 void ModeNewControl::PID_motors()
@@ -256,7 +256,7 @@ void ModeNewControl::PID_motors()
 	// target[throttle_i] = channel_throttle->get_control_in();
 	//printf("Altitude %f \n", inertial_nav.get_altitude());
 	//printf("Loop %d \n",loop);
-	
+	printf("HH");
 	loop += 1;
 	
 	if(loop > 5000){
@@ -265,7 +265,7 @@ void ModeNewControl::PID_motors()
 	}
 	if (loop > 10000){
 		target[pitch_i] = 10; // change
-		target[roll_i] = 30;
+		target[roll_i] = 10;
 	}
 	if(loop > 11000){
 		target[yaw_i] = 0; 
