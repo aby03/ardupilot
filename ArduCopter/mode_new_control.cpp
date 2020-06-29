@@ -16,8 +16,7 @@
 // COMMANDS: To set roll pitch
 // channel_roll->set_control_in(<float value>);   channel_pitch->set_control_in(<float value>);   channel_yaw->set_control_in(<float value>);
 	
-// const AP_InertialNav& inav;
-// const AP_InertialNav& _inav;
+
 
 
 
@@ -67,9 +66,14 @@ float accel_lim = 250.0f;
 float pid_accel_max = accel_lim;
 float pid_accel_min = -accel_lim;
 float _dt = 0.02;
+
+float throttle_in;
+float pid_accel;
+float pid_vel_max;
+float pid_vel_min;
 //pos_control->set_alt_target(target_z); // Line not able to call
 // Altitude target set
-float target_z = 1000.0f; //HARD CODED 
+float target_z = 10.0f; //HARD CODED 
 
 float curr_alt;
 float error_z;
@@ -87,10 +91,7 @@ float error_accel;
 float error_sum_accel;
 float delta_err_accel;
 float prev_accel;
-float pid_accel;
 
-float pid_vel_max = 250;
-float pid_vel_min = -250;
 float thr_out;
 
 int loop = 0;
@@ -139,7 +140,8 @@ bool ModeNewControl::init(bool ignore_checks)
 		error_max[i] = 400;
 		prev_error[i] = 0;
 	}
-	
+	pid_vel_max = 250;
+	pid_vel_min = -250;
 	// pid_max[pitch_i] = 400;
 	// pid_max[yaw_rate_i] = 400;
 	
@@ -243,10 +245,10 @@ void ModeNewControl::run()
 	
 	// Custom Controller Loop
 
-	update_motors();
+	PID_motors();
 }
 
-void ModeNewControl::update_motors()
+void ModeNewControl::PID_motors()
 {
 	// target[roll_i] = target_roll;
 	// target[pitch_i] = target_pitch;
@@ -254,14 +256,16 @@ void ModeNewControl::update_motors()
 	// target[throttle_i] = channel_throttle->get_control_in();
 	//printf("Altitude %f \n", inertial_nav.get_altitude());
 	//printf("Loop %d \n",loop);
+	
 	loop += 1;
 	
 	if(loop > 5000){
 		current[throttle_i] = 1800;
+
 	}
 	if (loop > 10000){
 		target[pitch_i] = 10; // change
-		target[roll_i] = 10;
+		target[roll_i] = 30;
 	}
 	if(loop > 11000){
 		target[yaw_i] = 0; 
@@ -443,7 +447,7 @@ void ModeNewControl::update_motors()
 void ModeNewControl::throttle_control()
 {
     curr_alt = inertial_nav.get_altitude();
-    
+    printf("Entered throttle control");
     // clear position limit flags
     // _limit.pos_up = false;
     // _limit.pos_down = false;
@@ -499,16 +503,20 @@ void ModeNewControl::throttle_control()
 	if(pid_accel < pid_accel_min)
 	{	pid_accel = pid_accel_min;	}
 	
-	thr_out =  motors.get_throttle_hover() + pid_accel;
+	thr_out =  motors->get_throttle_hover() + pid_accel;
 
 	if(thr_out>1)
 	{	thr_out = 1;	}
 	if(thr_out<0)
 	{	thr_out = 0;	}
 
-	throttle_in = get_throttle_boosted(throttle_in);
-	motors.set_throttle(throttle_in);
-	
-
+	// throttle_in = get_throttle_boosted(thr_out);
+	// get throttle boosted code copied below
+    float cos_tilt = ahrs.cos_pitch() * ahrs.cos_roll();
+    float inverted_factor = constrain_float(2.0f * cos_tilt, 0.0f, 1.0f);
+    float boost_factor = 1.0f / constrain_float(cos_tilt, 0.5f, 1.0f);
+    float throttle_out = thr_out * inverted_factor * boost_factor;
+	// get throttle boosted end
+	motors->set_throttle(throttle_out);
 
 }

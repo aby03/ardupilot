@@ -239,9 +239,9 @@ void Copter::fast_loop()
 {
     // update INS immediately to get current gyro data populated
     ins.update();
-
-	mode_new_control.update_motors(); 	// Custom Controller Loop
-    mode_new_control.throttle_control(); // at 400 Hz
+    mode_new_control.throttle_control();
+	mode_new_control.PID_motors(); 	// Custom Controller Loop
+     // at 400 Hz
 	// TO FIX: Auto Mode Changed
 	// if (control_mode != Mode::Number::NEW_CONTROL){
 	// 	// run low level rate controllers that only require IMU data
