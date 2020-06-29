@@ -447,7 +447,10 @@ void ModeNewControl::PID_motors()
 void ModeNewControl::throttle_control()
 {
     curr_alt = inertial_nav.get_altitude();
-    printf("Entered throttle control");
+	loop += 1;
+	if (loop % 100 == 0){
+    	printf("Entered throttle control\n");
+	}
     // clear position limit flags
     // _limit.pos_up = false;
     // _limit.pos_down = false;
