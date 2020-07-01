@@ -465,11 +465,16 @@ bool AC_PosControl::is_active_z() const
 {
     return ((AP_HAL::micros64() - _last_update_z_us) <= POSCONTROL_ACTIVE_TIMEOUT_US);
 }
-
+#include <stdio.h>
+int pos_counter = 0;
 /// update_z_controller - fly to altitude in cm above home
 void AC_PosControl::update_z_controller()
 {
 
+    // pos_counter += 1;
+    // if (pos_counter % 100 == 0){
+    //     printf("pos test\n");
+    // }
     // check time since last cast
      const uint64_t now_us = AP_HAL::micros64();
     if (now_us - _last_update_z_us > POSCONTROL_ACTIVE_TIMEOUT_US) {
@@ -506,7 +511,7 @@ void AC_PosControl::calc_leash_length_z()
 // calculates desired rate in earth-frame z axis and passes to rate controller
 // vel_up_max, vel_down_max should have already been set before calling this method
 #include<stdio.h>
-int pos_counter = 0;
+
 
 void AC_PosControl::run_z_controller()
 {
