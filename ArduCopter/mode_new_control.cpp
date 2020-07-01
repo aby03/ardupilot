@@ -108,7 +108,7 @@ int loop = 0;
 bool ModeNewControl::init(bool ignore_checks)
 {
 	// outfile.open("custom.log");	
-	fptr = fopen("custom_pitch.txt","w"); // change
+	fptr = fopen("throttle.txt","w"); // change
 	// current[throttle_i] = 1500;
 	// return true;
 	// PID Parameters
@@ -135,7 +135,7 @@ bool ModeNewControl::init(bool ignore_checks)
 	ki[yaw_rate_i] = 0;
 
 // Constants for throttle control
-	fprintf(fptr,"Kp: %f Kd: %f Ki: %f\n", kp[pitch_i], kd[pitch_i], ki[pitch_i]); // change
+	//fprintf(fptr,"Kp: %f Kd: %f Ki: %f\n", kp[pitch_i], kd[pitch_i], ki[pitch_i]); // change
 
 	for (int i = 0; i < 7; i ++ ){
 		pid_max[i] = 400;
@@ -279,11 +279,11 @@ void ModeNewControl::PID_motors()
 	}
 
 
-	fprintf(fptr,"Target: %f Current: %f\n", target[pitch_i], current[pitch_i]); // change
+	fprintf(fptr,"Target: %f Current: %f\n", target_z, curr_alt); // change
 	// outfile << "Current: " << current[yaw_i] << " Target: " << target[yaw_i];
-	AP::logger().Write("PVPD", "Target,Current", "ff",
-                                        (double)target[yaw_i],
-                                        (double)current[yaw_i]);
+	//AP::logger().Write("PVPD", "Target,Current", "ff",
+                             //           (double)target[yaw_i],
+                             //           (double)current[yaw_i]);
 
 
 	//// 1. Get AHRS reading (all angles in radians/seconds)
