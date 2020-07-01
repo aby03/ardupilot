@@ -20,7 +20,7 @@
  */
 #include <AP_HAL/AP_HAL.h>
 #include "AP_MotorsMatrix.h"
-
+#include<stdio.h>
 extern const AP_HAL::HAL& hal;
 
 // init
@@ -209,6 +209,9 @@ void AP_MotorsMatrix::output_armed_stabilizing()
             if (_thrust_rpyt_out[i] > rp_high && (!_thrust_boost || i != _motor_lost_index)) {
                 rp_high = _thrust_rpyt_out[i];
             }
+
+            printf("roll_thrust%f\n",roll_thrust );
+            printf("pitch_thrust%f\n", pitch_thrust);
 
             // Check the maximum yaw control that can be used on this channel
             // Exclude any lost motors if thrust boost is enabled

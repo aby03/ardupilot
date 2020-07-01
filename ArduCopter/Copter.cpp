@@ -232,6 +232,7 @@ void Copter::loop()
     scheduler.loop();
     mode_new_control.throttle_control();
     G_Dt = scheduler.get_last_loop_time_s();
+    // copter.pos_control->update_z_controller();
 }
 
 
@@ -240,16 +241,16 @@ void Copter::fast_loop()
 {
     // update INS immediately to get current gyro data populated
     ins.update();
-    
-	mode_new_control.PID_motors(); 	// Custom Controller Loop
+    // mode_new_control.throttle_control();
+	//mode_new_control.PID_motors(); 	// Custom Controller Loop
      // at 400 Hz
 	// TO FIX: Auto Mode Changed
 	// if (control_mode != Mode::Number::NEW_CONTROL){
 	// 	// run low level rate controllers that only require IMU data
-	// 	attitude_control->rate_controller_run();
-		
-	// 	// send outputs to the motors library immediately
-	// 	motors_output();	// ORIGINAL
+	//attitude_control->rate_controller_run();
+	// copter.pos_control->update_z_controller();
+	// send outputs to the motors library immediately
+	motors_output();	// ORIGINAL
 	// }else{
 	// 	// CUSTOM
 	// 	// Call Custom Controller funtion
