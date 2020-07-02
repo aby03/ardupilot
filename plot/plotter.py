@@ -11,12 +11,13 @@ def all_subdirs_of(b='.'):
   return result
 
 # Ubuntu /tmp/ path from windows
-tmppath = 'C:\\Users\\Asus Pc\\AppData\\Local\\Packages\\CanonicalGroupLimited.UbuntuonWindows_79rhkp1fndgsc\\LocalState\\rootfs\\tmp'
+#tmppath = 'C:\\Users\\snigdha\\AppData\\Local\\Packages\\CanonicalGroupLimited.UbuntuonWindows_79rhkp1fndgsc\\LocalState\\rootfs\\tmp'
 #tmppath = 'C:\\Users\\Asus Pc\\AppData\\Local\\Packages\\CanonicalGroupLimited.UbuntuonWindows_79rhkp1fndgsc\\LocalState\\rootfs\\tmp'
+tmppath = '/tmp/'
 
 all_subdirs = all_subdirs_of(tmppath)
 latest_subdir = max(all_subdirs, key=os.path.getmtime)
-fpath = latest_subdir+'\\custom.log'
+fpath = latest_subdir+'/custom.log'
 
 x = []
 y = []

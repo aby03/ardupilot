@@ -465,12 +465,18 @@ bool AC_PosControl::is_active_z() const
 {
     return ((AP_HAL::micros64() - _last_update_z_us) <= POSCONTROL_ACTIVE_TIMEOUT_US);
 }
-
+#include <stdio.h>
+int pos_counter = 0;
 /// update_z_controller - fly to altitude in cm above home
 void AC_PosControl::update_z_controller()
 {
+
+    // pos_counter += 1;
+    // if (pos_counter % 100 == 0){
+    //     printf("pos test\n");
+    // }
     // check time since last cast
-    const uint64_t now_us = AP_HAL::micros64();
+     const uint64_t now_us = AP_HAL::micros64();
     if (now_us - _last_update_z_us > POSCONTROL_ACTIVE_TIMEOUT_US) {
         _flags.reset_rate_to_accel_z = true;
         _pid_accel_z.set_integrator((_attitude_control.get_throttle_in() - _motors.get_throttle_hover()) * 1000.0f);
@@ -504,10 +510,17 @@ void AC_PosControl::calc_leash_length_z()
 // target altitude should be set with one of these functions: set_alt_target, set_target_to_stopping_point_z, init_takeoff
 // calculates desired rate in earth-frame z axis and passes to rate controller
 // vel_up_max, vel_down_max should have already been set before calling this method
+#include<stdio.h>
+
+
 void AC_PosControl::run_z_controller()
 {
+    pos_counter += 1;
+    //_pos_target.z = 1000.0;
+    // set_target_to_stopping_point_z()
+    set_alt_target(100.0);
     float curr_alt = _inav.get_altitude();
-
+    
     // clear position limit flags
     _limit.pos_up = false;
     _limit.pos_down = false;
@@ -624,6 +637,9 @@ void AC_PosControl::run_z_controller()
 
     _vel_z_control_ratio += _dt*0.1f*(0.5-error_ratio);
     _vel_z_control_ratio = constrain_float(_vel_z_control_ratio, 0.0f, 2.0f);
+
+    
+    
 }
 
 ///

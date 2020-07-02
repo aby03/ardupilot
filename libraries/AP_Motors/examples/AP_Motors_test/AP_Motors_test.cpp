@@ -21,6 +21,7 @@ void motor_order_test();
 void stability_test();
 void update_motors();
 
+
 #define HELI_TEST       0   // set to 1 to test helicopters
 #define NUM_OUTPUTS     4   // set to 6 for hexacopter, 8 for octacopter and heli
 
