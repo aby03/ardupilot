@@ -1526,7 +1526,7 @@ public:
     bool is_autopilot() const override { return false; }
 	
 	void update_motors();
-
+    void get_custom_throttle();
 protected:
 
     const char *name() const override { return "NEW_CONTROL"; }

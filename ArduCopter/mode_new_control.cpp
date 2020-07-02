@@ -51,6 +51,50 @@ float target_roll, target_pitch, target_yaw_rate, target_throt;
 float cur_roll, cur_pitch, cur_yaw, cur_yaw_rate, cur_throt;
 float err_roll, err_pitch, err_yaw, err_yaw_rate, err_throt;
 
+// Throttle
+// Throttle constants set
+float THR_ALT_P = 1.0f;
+float RATE_THR_P = 1.0f;
+float RATE_THR_I = 0.0f;
+float RATE_THR_D = 0.0f;
+float ACCEL_THR_P = 1.0f;
+float ACCEL_THR_I = 0.0f;
+float ACCEL_THR_D = 0.0f;
+
+float accel_lim = 250.0f;
+float pid_accel_max = accel_lim;
+float pid_accel_min = -accel_lim;
+float _dt = 0.01;
+
+float throttle_in = 0.0;
+float pid_accel = 0.0;
+float vel_max = 250;
+float vel_min = -250;
+//pos_control->set_alt_target(target_z); // Line not able to call
+// Altitude target set
+float target_z = 3000.0f; //in cm according to inbuilt code 
+
+float curr_alt = 0.0;
+float error_z = 0.0;
+
+float vel_target = 0.0;
+
+float error_vel = 0.0;
+float error_sum_vel = 0.0;
+float delta_err_vel = 0.0;
+float prev_vel = 0.0;
+float pid_vel = 0.0;
+
+float accel_target = 0.0;
+float accel_cur = 0.0;
+float error_accel = 0.0;
+float error_sum_accel = 0.0;
+float delta_err_accel = 0.0;
+float prev_accel = 0.0;
+
+float thr_out = 0.0;
+float accel_gnd = 0;
+
 int loop = 0;
 /*
  * Init and run calls for stabilize flight mode
@@ -58,7 +102,7 @@ int loop = 0;
 bool ModeNewControl::init(bool ignore_checks)
 {
 	// outfile.open("custom.log");	
-	fptr = fopen("custom_pitch.txt","w"); // change
+	fptr = fopen("throttle.txt","w"); // change
 	// current[throttle_i] = 1500;
 	// return true;
 
@@ -85,7 +129,7 @@ bool ModeNewControl::init(bool ignore_checks)
 	ki[yaw_rate_i] = 0;
 	
 	// Write to file PID parameters
-	fprintf(fptr,"Kp: %f Kd: %f Ki: %f\n", kp[pitch_i], kd[pitch_i], ki[pitch_i]); // change
+	// fprintf(fptr,"Kp: %f Kd: %f Ki: %f\n", kp[pitch_i], kd[pitch_i], ki[pitch_i]); // change
 
 	// PID Variables threshold
 	for (int i = 0; i < 7; i ++ ){
@@ -181,11 +225,12 @@ void ModeNewControl::run()
 	
 	// Custom Controller Loop
 	// update_motors();
-	loop += 1;
-	if (loop % 100 == 0){
-		printf("R: %d P: %d Y: %d T: %d\n", channel_roll->get_control_in(), channel_pitch->get_control_in(), channel_yaw->get_control_in(), channel_throttle->get_control_in()); // change
-		// printf("2- R: %d P: %d Y: %d T: %d\n", channel_roll->get_radio_in(), channel_pitch->get_radio_in(), channel_yaw->get_radio_in(), channel_throttle->get_radio_in()); // change
-	}
+	// loop += 1;
+	// if (loop % 100 == 0){
+	// 	printf("R: %d P: %d Y: %d T: %d\n", channel_roll->get_control_in(), channel_pitch->get_control_in(), channel_yaw->get_control_in(), channel_throttle->get_control_in()); // change
+	// 	// printf("2- R: %d P: %d Y: %d T: %d\n", channel_roll->get_radio_in(), channel_pitch->get_radio_in(), channel_yaw->get_radio_in(), channel_throttle->get_radio_in()); // change
+	// }
+	get_custom_throttle();
 }
 // RANGES:
 // target_yaw_rate -20,250 - 20,250
@@ -209,6 +254,7 @@ void ModeNewControl::update_motors()
 	//                                     (double)target[yaw_i],
 	//                                     (double)current[yaw_i]);
 
+	fprintf(fptr,"Target: %f Current: %f\n", target_z, curr_alt); // change
 
 	//printf("Altitude %f \n", inertial_nav.get_altitude());
 	//printf("Loop %d \n",loop);
@@ -227,7 +273,7 @@ void ModeNewControl::update_motors()
 	target[roll_i] = target_roll / 100;
 	target[pitch_i] = target_pitch / 100;
 	target[yaw_rate_i] = target_yaw_rate / 1000;
-	target[throttle_i] = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET;
+	// target[throttle_i] = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET;
 	target[yaw_i] = current[yaw_i] + target_yaw_rate / 400;
 
 	current[throttle_i] = target[throttle_i];
@@ -378,4 +424,43 @@ void ModeNewControl::update_motors()
 	SRV_Channels::output_ch_all();		// update output on any aux channels, for manual passthru
 	SRV_Channels::push();				// push all channels	
 
+}
+
+void ModeNewControl::get_custom_throttle(){
+	loop += 1;
+	// ABHAY
+	accel_gnd = -(ahrs.get_accel_ef_blended().z + GRAVITY_MSS)*100;
+	curr_alt = inertial_nav.get_altitude();
+	const Vector3f&  vel_current = inertial_nav.get_velocity() ;
+	vel_target = AC_AttitudeControl::sqrt_controller(target_z - inertial_nav.get_altitude(), THR_ALT_P, accel_lim, _dt);
+	if (vel_target < vel_min) {
+        vel_target = vel_min;
+        // _limit.vel_down = true;
+    }
+    if (vel_target > vel_max) {
+        vel_target = vel_max;
+        // _limit.vel_up = true;
+    }
+	accel_target = ((vel_target - vel_current.z)*RATE_THR_P);
+	pid_accel = ((accel_target - accel_gnd)*ACCEL_THR_P);//(error_sum_accel*ACCEL_THR_I*_dt) + ((delta_err_accel*ACCEL_THR_D)/_dt);
+	thr_out =  motors->get_throttle_hover() + pid_accel/250;
+	if(thr_out>1)
+	{	thr_out = 1;	}
+	if(thr_out<0)
+	{	thr_out = 0;	}
+
+	float thr = 1000.0 + thr_out*(2000.0 - 1000.0);	
+	target[throttle_i] = thr;
+	if(loop%100 == 0)
+	{
+		printf("Current Altitude %f", curr_alt);
+		printf("| Current Acceleration %f", accel_gnd);
+		printf("| Current velocity %f",vel_current.z);
+		printf("| Velocity target %f", vel_target);
+		printf("| Acceleration Target %f", accel_target);
+		printf("| PID accel %f", pid_accel);	
+		printf("| throttle out %f", thr_out);
+		printf("| Current Throttle %f\n", target[throttle_i] );
+	}
+	// ABHAY
 }
