@@ -281,7 +281,7 @@ void ModeNewControl::PID_motors()
 	if(loop > 11000){
 		target[yaw_i] = 0; 
 	}
-	if(loop > 12000){
+	if(loop > 20000){
 		target[pitch_i] = 0;
 	}
 
