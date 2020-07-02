@@ -2,7 +2,7 @@
 
 #include <AP_Motors/AP_MotorsMulticopter.h>
 #include <AP_Motors/AP_Motors.h>
-
+#include <stdio.h> // For printf statements
 // #include <fstream>
 // #include <iostream>
 
@@ -47,7 +47,7 @@ float kp[7], kp_r[4];
 float ki[7], kd_r[4];
 float kd[7], ki_r[4];
 
-float target_roll, target_pitch, target_yaw_rate, target_throt;
+float target_roll, target_pitch, target_yaw_rate, target_throttle;
 float cur_roll, cur_pitch, cur_yaw, cur_yaw_rate, cur_throt;
 float err_roll, err_pitch, err_yaw, err_yaw_rate, err_throt;
 
@@ -101,6 +101,7 @@ int loop = 0;
  */
 bool ModeNewControl::init(bool ignore_checks)
 {
+	loop = 0;
 	// outfile.open("custom.log");	
 	fptr = fopen("throttle.txt","w"); // change
 	// current[throttle_i] = 1500;
@@ -216,48 +217,35 @@ void ModeNewControl::run()
     // // call attitude controller
     // attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(target_roll, target_pitch, target_yaw_rate);
 
-	
-
     // // output pilot's throttle
     // attitude_control->set_throttle_out(get_pilot_desired_throttle(),
                                        // true,
                                        // g.throttle_filt)
 	
-	// Custom Controller Loop
-	// update_motors();
-	// loop += 1;
+	// // Throttle from remote control
+	// target_throttle = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET; // For getting throttle from remote control
+
+	// Throttle from Altitude Control
+	get_custom_throttle();	// Get Final throttle PWM value in target_throttle
 	// if (loop % 100 == 0){
-	// 	printf("R: %d P: %d Y: %d T: %d\n", channel_roll->get_control_in(), channel_pitch->get_control_in(), channel_yaw->get_control_in(), channel_throttle->get_control_in()); // change
-	// 	// printf("2- R: %d P: %d Y: %d T: %d\n", channel_roll->get_radio_in(), channel_pitch->get_radio_in(), channel_yaw->get_radio_in(), channel_throttle->get_radio_in()); // change
+	// 	printf("Run Working %d\n", loop);
 	// }
-	get_custom_throttle();
+	PID_motors();
 }
+
 // RANGES:
 // target_yaw_rate -20,250 - 20,250
 // target_roll -3,000 - 3,000
 // target_pitch -3,000 - 3,000
 // throttle - 0-1	
 // channel_throttle->get_control_in() - 0 - 1000 479
-void ModeNewControl::update_motors()
+
+void ModeNewControl::PID_motors()
 {
-	loop += 1;
-
-	// // Write for tuning
-	// if (loop % 100 == 0){
-	// 	fprintf(fptr,"Target: %f Current: %f\n", target[pitch_i], current[pitch_i]); // change
-	// }
-	// if (loop % 100 == 0){
-	// 	printf("Target: %f Current: %f\n", target[pitch_i], current[pitch_i]); // change
-	// }
-	// outfile << "Current: " << current[yaw_i] << " Target: " << target[yaw_i];
-	// AP::logger().Write("PVPD", "Target,Current", "ff",
-	//                                     (double)target[yaw_i],
-	//                                     (double)current[yaw_i]);
-
-	fprintf(fptr,"Target: %f Current: %f\n", target_z, curr_alt); // change
-
-	//printf("Altitude %f \n", inertial_nav.get_altitude());
-	//printf("Loop %d \n",loop);
+	loop += 1;	// loop counter for print statements
+	if (loop % 100 == 0){
+		printf("PID Motors Loop Count %d\n", loop);
+	}
 
 	//// 1. Get AHRS reading (all angles in radians/seconds)
 	Vector3f gyro_latest = ahrs.get_gyro_latest();
@@ -269,21 +257,36 @@ void ModeNewControl::update_motors()
 	current[pitch_i] = ToDeg(ahrs.get_pitch());
 	current[yaw_i] = ToDeg(ahrs.get_yaw());
 
-	//// 1.2. Get Target Attitude
-	target[roll_i] = target_roll / 100;
-	target[pitch_i] = target_pitch / 100;
-	target[yaw_rate_i] = target_yaw_rate / 1000;
-	// target[throttle_i] = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET;
-	target[yaw_i] = current[yaw_i] + target_yaw_rate / 400;
+	//// 1.2. Get Target Attitude (from remote) (COMMENT WHEN NOT USING REMOTE AND USE ALTERNATE)
+	// target[roll_i] = target_roll / 100;
+	// target[pitch_i] = target_pitch / 100;
+	// target[yaw_rate_i] = target_yaw_rate / 1000;
+	// target[throttle_i] = target_throttle;
+	// target[yaw_i] = current[yaw_i] + target_yaw_rate / 400;
+	
+	//// 1.2. ALTERNATE Auto Set Target
+	target[throttle_i] = target_throttle;
+	if (loop <= 5000){
+		target[roll_i] = 0;
+		target[pitch_i] = 0;
+		target[yaw_i] = 0;
+	}
+	if(loop > 5000){
+	
+	}
+	if (loop > 10000){
+		target[pitch_i] = 20; // change
+		target[roll_i] = 0;
+	}
+	if(loop > 11000){
+		target[yaw_i] = 0; 
+	}
+	if(loop > 12000){
+		target[pitch_i] = 0;
+	}
 
-	current[throttle_i] = target[throttle_i];
-	//-printf("Position R: %f, P: %f, Y: %f\n", current[roll_i], current[pitch_i], current[yaw_i] );
-	//-printf("Target   R: %f, P: %f, Y: %f\n", target[roll_i], target[pitch_i], target[yaw_i]);
-	//-printf("Rate     R: %f, P: %f, Y: %f\n", ToDeg(gyro_latest.x), ToDeg(gyro_latest.y), ToDeg(gyro_latest.z) );
-	
-	// //-printf("Curren R: %f, P: %f, Yr: %f, Y: %f\n", ToDeg(cur_roll), ToDeg(cur_pitch), ToDeg(cur_yaw_rate), cur_yaw);
-	// //-printf("Channels: %d %d\n", SRV_Channel::k_motor1, SRV_Channels::channel_function(1));
-	
+
+	current[throttle_i] = target[throttle_i];	// This value used directly in PWM throttle output
 	
 	//// 2. Error Roll Pitch Yaw
 	error[roll_i]     = target[roll_i]     - current[roll_i];
@@ -300,8 +303,6 @@ void ModeNewControl::update_motors()
 
 	error_sum[yaw_rate_i] += error[yaw_rate_i];
 	error_sum[throttle_i] += error[throttle_i];
-	//-printf("Err Sum   R: %f, P: %f, Y: %f\n", error_sum[roll_i], error_sum[pitch_i], error_sum[yaw_i]);
-	//-printf("Err   R: %f, P: %f, Y: %f\n", error[roll_i], error[pitch_i], error[yaw_i]);
 
 	//// Limit err_correction
 	if (abs(ki[pitch_i]) > 0.0000001)
@@ -450,17 +451,20 @@ void ModeNewControl::get_custom_throttle(){
 	{	thr_out = 0;	}
 
 	float thr = 1000.0 + thr_out*(2000.0 - 1000.0);	
-	target[throttle_i] = thr;
+	target_throttle = thr;
 	if(loop%100 == 0)
 	{
-		printf("Current Altitude %f", curr_alt);
-		printf("| Current Acceleration %f", accel_gnd);
-		printf("| Current velocity %f",vel_current.z);
-		printf("| Velocity target %f", vel_target);
-		printf("| Acceleration Target %f", accel_target);
-		printf("| PID accel %f", pid_accel);	
-		printf("| throttle out %f", thr_out);
-		printf("| Current Throttle %f\n", target[throttle_i] );
+		// printf("Current Altitude %f", curr_alt);
+		// printf("| Current Acceleration %f", accel_gnd);
+		// printf("| Current velocity %f",vel_current.z);
+		// printf("| Velocity target %f", vel_target);
+		// printf("| Acceleration Target %f", accel_target);
+		// printf("| PID accel %f", pid_accel);	
+		// printf("| throttle out %f", thr_out);
+		// printf("| Current Throttle %f\n", target_throttle );
 	}
+
+	fprintf(fptr,"Target: %f Current: %f\n", target_z, curr_alt); // change
+
 	// ABHAY
 }
