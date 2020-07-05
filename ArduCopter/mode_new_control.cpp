@@ -5,12 +5,6 @@
 #include <AP_Motors/AP_MotorsMulticopter.h>
 #include <AP_Motors/AP_Motors.h>
 
-// COMMANDS: To get roll pitch yaw, throttle
-// channel_roll->get_control_in();   channel_pitch->get_control_in();   channel_yaw->get_control_in();  channel_throttle->get_control_in();   get_pilot_desired_throttle()
-// COMMANDS: To set roll pitch
-// channel_roll->set_control_in(<float value>);   channel_pitch->set_control_in(<float value>);   channel_yaw->set_control_in(<float value>);
-
-
 /*
 ./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=192.168.184.1./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=127.0.0.1
 */
@@ -21,7 +15,7 @@ FILE *fptr;	// To open file and write it for plotting
 # define ALT_CONTROL_ENABLE 1	// Disable when alt control not needed
 
 // Attitude Control
-int HOVER_THROTTLE_OFFSET = 100;
+int HOVER_THROTTLE_OFFSET = 100;	// for remote control throttle
 int roll_i = 0, pitch_i = 1, yaw_i = 2, throttle_i = 3;
 int roll_rate_i = 4, pitch_rate_i = 5, yaw_rate_i = 6;
 int A = 0, B = 1, C = 2, D = 3;
@@ -44,7 +38,7 @@ float kp[7], kp_r[4];
 float ki[7], kd_r[4];
 float kd[7], ki_r[4];
 
-float target_roll, target_pitch, target_yaw_rate, target_throttle;
+float target_roll, target_pitch, target_yaw_rate, target_throttle;	// Set these variables via pos control or remote control
 float cur_roll, cur_pitch, cur_yaw, cur_yaw_rate, cur_throt;
 float err_roll, err_pitch, err_yaw, err_yaw_rate, err_throt;
 
@@ -58,49 +52,38 @@ float ACCEL_THR_P = 1.0f;
 float ACCEL_THR_I = 0.0f;
 float ACCEL_THR_D = 0.0f;
 
-float accel_lim = 250.0f;
+float accel_lim = 300.0f;
 float pid_accel_max = accel_lim;
 float pid_accel_min = -accel_lim;
 float _dt = 0.01;
 
 float throttle_in = 0.0;
 float pid_accel = 0.0;
-float vel_max = 250;
-float vel_min = -250;
+float vel_max = 300;
+float vel_min = -300;
 
 // Altitude target set
 float target_z = 0.0f; //in cm according to inbuilt code 
 
 float curr_alt = 0.0;
 float error_z = 0.0;
-
 float vel_target = 0.0;
-
 float error_vel = 0.0;
 float error_sum_vel = 0.0;
 float delta_err_vel = 0.0;
 float prev_vel = 0.0;
 float pid_vel = 0.0;
-
 float accel_target = 0.0;
 float accel_cur = 0.0;
 float error_accel = 0.0;
 float error_sum_accel = 0.0;
 float delta_err_accel = 0.0;
 float prev_accel = 0.0;
-
 float thr_out = 0.0;
 float accel_gnd = 0;
 
 // Pos Control
-// parameters
-float    _wp_speed_cms = 500.0f;          // default maximum horizontal speed in cm/s during missions
-float    _wp_speed_up_cms = 250.0f;       // default maximum climb rate in cm/s
-float    _wp_speed_down_cms = 150.0f;     // default maximum descent rate in cm/s
-float    _wp_radius_cm = 200.0f;          // distance from a waypoint in cm that, when crossed, indicates the wp has been reached
-float    _wp_accel_cmss = 100.0f;          // horizontal acceleration in cm/s/s during missions
-float    _wp_accel_z_cmss = 100.0f;        // vertical acceleration in cm/s/s during missions
-
+// Internal Variables
 Vector3f    _pos_target;            // target location in cm from home
 Vector3f    _pos_error;             // error between desired and actual position in cm
 Vector3f    _vel_desired;           // desired velocity in cm/s
@@ -108,22 +91,17 @@ Vector2f    _vel_error;             // error between desired and actual accelera
 Vector2f    _prev_error_vel;             // error between desired and actual acceleration in cm/s
 Vector3f    _vel_target;            // velocity target in cm/s calculated by pos_to_rate step
 Vector2f    _vehicle_horiz_vel;     // velocity to use if _flags.vehicle_horiz_vel_override is set
-Vector3f    _accel_desired;         // desired acceleration in cm/s/s (feed forward)
 Vector3f    _accel_target;          // acceleration target in cm/s/s
-
 
 // Gains
 # define POSCONTROL_ACCEL_XY 				   100.0f
 # define POSCONTROL_LEASH_LENGTH_MIN 		   100.0f
-# define POSCONTROL_ACCEL_FILTER_HZ 		   2.0f
 # define POSCONTROL_POS_XY_P                   1.0f    // horizontal position controller P gain default // 1.0f
 # define POSCONTROL_VEL_XY_P                   2.0f    // horizontal velocity controller P gain default // 2.0f
 # define POSCONTROL_VEL_XY_I                   1.0f    // horizontal velocity controller I gain default // 1.0f
 # define POSCONTROL_VEL_XY_D                   0.5f  //0.5f    // horizontal velocity controller D gain default
-# define POSCONTROL_VEL_XY_IMAX                1000.0f // horizontal velocity controller IMAX gain default
-# define POSCONTROL_VEL_XY_FILT_HZ             5.0f    // horizontal velocity controller input filter	// 5.0f
-# define POSCONTROL_VEL_XY_FILT_D_HZ           5.0f    // horizontal velocity controller input filter for D // 5.0f
-// # define POSCONTROL_DT_50HZ					   0.01f  // Default: 0.02f
+
+# define MAX_TILT_ANGLE 20.0f
 
 // Debug
 int loop = 0;
@@ -135,20 +113,20 @@ Vector2f print_accel;
 bool ModeNewControl::init(bool ignore_checks)
 {
 	loop = 0;
-	// outfile.open("custom.log");	
-	fptr = fopen("throttle.txt","w"); // change
-	// current[throttle_i] = 1500;
-	// return true;
+	fptr = fopen("throttle.txt","w"); // file for plotting
 
 	// PID Parameters
 	kp[roll_i] = 1;			// New Fast: 1 Prev: 0.005
 	kd[roll_i] = 200.0;		// New Fast: 200 Prev: 1.05
+	ki[roll_i] = 0;
 
 	kp[pitch_i] = 1;		//0.005
 	kd[pitch_i] = 200;		//1.01
+	ki[pitch_i] = 0;
 
-	kp[yaw_i] = 0.001;//0.001
-	kd[yaw_i] = 1.01; // 1.01
+	kp[yaw_i] = 1;//0.001
+	kd[yaw_i] = 200; // 1.01
+	ki[yaw_i] = 0;
 
 	kp[roll_rate_i] = 0;
 	kd[roll_rate_i] = 0;
@@ -157,9 +135,6 @@ bool ModeNewControl::init(bool ignore_checks)
 	kp[yaw_rate_i] = 0;	
 	kd[yaw_rate_i] = 0;
 	
-	ki[roll_i] = 0;
-	ki[pitch_i] = 0;
-	ki[yaw_rate_i] = 0;
 	ki[roll_rate_i] = 0;
 	ki[pitch_rate_i] = 0;
 	ki[yaw_rate_i] = 0;
@@ -169,10 +144,10 @@ bool ModeNewControl::init(bool ignore_checks)
 
 	// PID Variables threshold
 	for (int i = 0; i < 7; i ++ ){
-		pid_max[i] = 600;
-		pid_min[i] = -600;
-		error_min[i] = -600;
-		error_max[i] = 600;
+		pid_max[i] = 400;
+		pid_min[i] = -400;
+		error_min[i] = -400;
+		error_max[i] = 400;
 		prev_error[i] = 0;
 	}
 
@@ -183,14 +158,14 @@ bool ModeNewControl::init(bool ignore_checks)
 		pulse_width_min[i] = 1000;
 	}
 
-
+	// Initialize values to 0
 	for (int i = 0; i<7; i++)
 	{
 		target[i] = 0;
 		pid[i] = 0;
 	}
 
-	current[throttle_i] = 1000; // 1800
+	current[throttle_i] = 1000;
 	start_custom_pos();
 	return true;
 }
@@ -242,13 +217,6 @@ void ModeNewControl::run()
 	}
 
 }
-
-// RANGES:
-// target_yaw_rate -20,250 - 20,250
-// target_roll -3,000 - 3,000
-// target_pitch -3,000 - 3,000
-// throttle - 0-1	
-// channel_throttle->get_control_in() - 0 - 1000 479
 
 void ModeNewControl::PID_motors()
 {
@@ -360,8 +328,6 @@ void ModeNewControl::PID_motors()
 	pulse_width[C] = current[throttle_i] + pid[pitch_i] - pid[yaw_i];		// Front
 	pulse_width[D] = current[throttle_i] - pid[pitch_i] - pid[yaw_i];		// Back	
 
-	//printf("PID Roll i %f, %f\n",pid[roll_i],error_rpyt[roll_i]);
-
 	// Limit PWM within range
 	if(pulse_width[A] > pulse_width_max[A])
 	{	pulse_width[A] = pulse_width_max[A];	}
@@ -382,9 +348,7 @@ void ModeNewControl::PID_motors()
 	{	pulse_width[D] = pulse_width_max[D];	}
 	if(pulse_width[D] < pulse_width_min[D])
 	{	pulse_width[D] = pulse_width_min[D];	}
-	
-	//-printf("PWM R: %f, L: %f, F: %f, B: %f\n", pulse_width[A], pulse_width[B], pulse_width[C], pulse_width[D] );
-	//-printf("\n");
+
 
 	//// 4. Output to motors
 	SRV_Channels::set_output_pwm_chan(0, pulse_width[A]); // uint16_t val		// Motor Pos: Right
@@ -445,7 +409,6 @@ void ModeNewControl::start_custom_pos(){
 
 /// run horizontal position controller correcting position and velocity
 ///     converts position (_pos_target) to target velocity (_vel_target)
-///     desired velocity (_vel_desired) is combined into final target velocity
 ///     converts desired velocities in lat/lon directions to accelerations in lat/lon frame
 ///     converts desired accelerations provided in lat/lon frame to roll/pitch angles
 void ModeNewControl::run_custom_pos(){
@@ -500,7 +463,7 @@ void ModeNewControl::run_custom_pos(){
 
 		// the following section converts desired accelerations provided in lat/lon frame to roll/pitch angles
 		// limit acceleration using maximum lean angles
-		float angle_max = 20.0f * 100.0f;	// Max angle drone will tilt to go to position
+		float angle_max = MAX_TILT_ANGLE * 100.0f;	// Max angle drone will tilt to go to position
 		float accel_max = MIN(GRAVITY_MSS * 100.0f * tanf(ToRad(angle_max * 0.01f)), POSCONTROL_ACCEL_XY_MAX);
 		limit_vector_length(_accel_target.x, _accel_target.y, accel_max);
 
