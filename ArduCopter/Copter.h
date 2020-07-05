@@ -898,6 +898,10 @@ private:
     void userhook_auxSwitch2(uint8_t ch_flag);
     void userhook_auxSwitch3(uint8_t ch_flag);
 
+    // Custom
+    void custom_pos_loop();
+    void custom_throttle_loop();
+
 #if OSD_ENABLED == ENABLED
     void publish_osd_info();
 #endif

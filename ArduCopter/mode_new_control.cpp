@@ -100,7 +100,8 @@ float    _wp_accel_z_cmss = 100.0f;        // vertical acceleration in cm/s/s du
 Vector3f    _pos_target;            // target location in cm from home
 Vector3f    _pos_error;             // error between desired and actual position in cm
 Vector3f    _vel_desired;           // desired velocity in cm/s
-Vector3f    _vel_error;             // error between desired and actual acceleration in cm/s
+Vector2f    _vel_error;             // error between desired and actual acceleration in cm/s
+Vector2f    _prev_error_vel;             // error between desired and actual acceleration in cm/s
 Vector3f    _vel_target;            // velocity target in cm/s calculated by pos_to_rate step
 Vector2f    _vehicle_horiz_vel;     // velocity to use if _flags.vehicle_horiz_vel_override is set
 Vector3f    _accel_desired;         // desired acceleration in cm/s/s (feed forward)
@@ -133,7 +134,7 @@ struct wpnav_flags {
 # define POSCONTROL_VEL_XY_IMAX                1000.0f // horizontal velocity controller IMAX gain default
 # define POSCONTROL_VEL_XY_FILT_HZ             10.0f    // horizontal velocity controller input filter	// 5.0f
 # define POSCONTROL_VEL_XY_FILT_D_HZ           10.0f    // horizontal velocity controller input filter for D // 5.0f
-# define POSCONTROL_DT_50HZ					   0.01f  // Default: 0.02f
+// # define POSCONTROL_DT_50HZ					   0.01f  // Default: 0.02f
 
 AC_PID_2D _pid_vel_xy = AC_PID_2D(POSCONTROL_VEL_XY_P, POSCONTROL_VEL_XY_I, POSCONTROL_VEL_XY_D, POSCONTROL_VEL_XY_IMAX, POSCONTROL_VEL_XY_FILT_HZ, POSCONTROL_VEL_XY_FILT_D_HZ, POSCONTROL_DT_50HZ);
 
@@ -578,19 +579,17 @@ struct poscontrol_limit_flags {
 // Parameters
 LowPassFilterVector2f _accel_target_filter; // acceleration target filter
 
-void ModeNewControl::run_custom_pos(){
 
 /// run horizontal position controller correcting position and velocity
 ///     converts position (_pos_target) to target velocity (_vel_target)
 ///     desired velocity (_vel_desired) is combined into final target velocity
 ///     converts desired velocities in lat/lon directions to accelerations in lat/lon frame
 ///     converts desired accelerations provided in lat/lon frame to roll/pitch angles
-    float ekfGndSpdLimit, ekfNavVelGainScaler;
-    AP::ahrs_navekf().getEkfControlLimits(ekfGndSpdLimit, ekfNavVelGainScaler); // abhay
-
+void ModeNewControl::run_custom_pos(){
+	// Get current position
     Vector3f curr_pos = inertial_nav.get_position();
-    float kP = ekfNavVelGainScaler * POSCONTROL_POS_XY_P; // scale gains to compensate for noisy optical flow measurement in the EKF
-	//abhay
+    float kP = POSCONTROL_POS_XY_P; // scale gains to compensate for noisy optical flow measurement in the EKF
+
     // avoid divide by zero
     if (kP <= 0.0f) {
         _vel_target.x = 0.0f;
@@ -600,34 +599,14 @@ void ModeNewControl::run_custom_pos(){
         _pos_error.x = _pos_target.x - curr_pos.x;
         _pos_error.y = _pos_target.y - curr_pos.y;
 
-        // // Constrain _pos_error and target position
-        // // Constrain the maximum length of _vel_target to the maximum position correction velocity
-        // // TODO: replace the leash length with a user definable maximum position correction
-        // if (limit_vector_length(_pos_error.x, _pos_error.y, POSCONTROL_LEASH_LENGTH_MIN)) {
-        //     _pos_target.x = curr_pos.x + _pos_error.x;
-        //     _pos_target.y = curr_pos.y + _pos_error.y;
-        // }
-
         _vel_target = sqrt_controller(_pos_error, kP, POSCONTROL_ACCEL_XY);
     }
 
-    // add velocity feed-forward
-    _vel_target.x += _vel_desired.x;
-    _vel_target.y += _vel_desired.y;
 
     // the following section converts desired velocities in lat/lon directions to accelerations in lat/lon frame
-
     Vector2f accel_target_pos, vel_xy_p, vel_xy_i, vel_xy_d;
 
-    // // check if vehicle velocity is being overridden
-    // if (_flags.vehicle_horiz_vel_override) {
-    //     _flags.vehicle_horiz_vel_override = false;
-    // } else {
-    //     _vehicle_horiz_vel.x = _inav.get_velocity().x;
-    //     _vehicle_horiz_vel.y = _inav.get_velocity().y;
-    // }
-
-    // check if vehicle velocity is being overridden
+    // Current Velocity
 	_vehicle_horiz_vel.x = inertial_nav.get_velocity().x;
 	_vehicle_horiz_vel.y = inertial_nav.get_velocity().y;
 
@@ -637,25 +616,28 @@ void ModeNewControl::run_custom_pos(){
     // TODO: constrain velocity error and velocity target
 
     // call pi controller
-    _pid_vel_xy.set_input(_vel_error);
+    // _pid_vel_xy.set_input(_vel_error);
 
     // get p
-    vel_xy_p = _pid_vel_xy.get_p();
+    vel_xy_p = _vel_error * POSCONTROL_VEL_XY_P;
 
     // update i term if we have not hit the accel or throttle limits OR the i term will reduce
     // TODO: move limit handling into the PI and PID controller
-    if (!_limit.accel_xy) {//abhay
-        vel_xy_i = _pid_vel_xy.get_i();
-    } else {
-        vel_xy_i = _pid_vel_xy.get_i_shrink();
-    }
+    // if (!_limit.accel_xy) {//abhay
+    //     vel_xy_i = _pid_vel_xy.get_i();
+    // } else {
+    //     vel_xy_i = _pid_vel_xy.get_i_shrink();
+    // }
+	vel_xy_i.x = 0;
+	vel_xy_i.y = 0;
 
     // get d
-    vel_xy_d = _pid_vel_xy.get_d();
+    vel_xy_d = (_prev_error_vel - _vel_error) * POSCONTROL_VEL_XY_D;
+	_prev_error_vel = _vel_error;
 
     // acceleration to correct for velocity error and scale PID output to compensate for optical flow measurement induced EKF noise
-    accel_target_pos.x = (vel_xy_p.x + vel_xy_i.x + vel_xy_d.x) * ekfNavVelGainScaler;//abhay
-    accel_target_pos.y = (vel_xy_p.y + vel_xy_i.y + vel_xy_d.y) * ekfNavVelGainScaler;//abhay
+    accel_target_pos.x = (vel_xy_p.x + vel_xy_i.x + vel_xy_d.x);//abhay
+    accel_target_pos.y = (vel_xy_p.y + vel_xy_i.y + vel_xy_d.y);//abhay
 
     // // reset accel to current desired acceleration
     // if (_flags.reset_accel_to_lean_xy) {
@@ -664,16 +646,18 @@ void ModeNewControl::run_custom_pos(){
     // }
 
     // filter correction acceleration
-    _accel_target_filter.set_cutoff_frequency(MIN(POSCONTROL_ACCEL_FILTER_HZ, 5.0f * ekfNavVelGainScaler)); //abhay
-    _accel_target_filter.apply(accel_target_pos, _dt);//abhay
+    // _accel_target_filter.set_cutoff_frequency(MIN(POSCONTROL_ACCEL_FILTER_HZ, 5.0f * ekfNavVelGainScaler)); //abhay
+    // _accel_target_filter.apply(accel_target_pos, _dt);//abhay
 
     // pass the correction acceleration to the target acceleration output
-    _accel_target.x = _accel_target_filter.get().x;//abhay
-    _accel_target.y = _accel_target_filter.get().y;//abhay
+    // _accel_target.x = _accel_target_filter.get().x;//abhay
+    // _accel_target.y = _accel_target_filter.get().y;//abhay
+	_accel_target.x = accel_target_pos.x;
+	_accel_target.y = accel_target_pos.y;
 
     // Add feed forward into the target acceleration output
-    _accel_target.x += _accel_desired.x;//abhay
-    _accel_target.y += _accel_desired.y;//abhay
+    // _accel_target.x += _accel_desired.x;//abhay
+    // _accel_target.y += _accel_desired.y;//abhay
 
     // the following section converts desired accelerations provided in lat/lon frame to roll/pitch angles
 

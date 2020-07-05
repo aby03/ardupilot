@@ -207,6 +207,9 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
 #if OSD_ENABLED == ENABLED
     SCHED_TASK(publish_osd_info, 1, 10),
 #endif
+// Custom
+SCHED_TASK(custom_pos_loop, 50, 500),
+SCHED_TASK(custom_throttle_loop, 100, 500),
 };
 
 constexpr int8_t Copter::_failsafe_priorities[7];
@@ -232,19 +235,23 @@ void Copter::loop()
     scheduler.loop();
     //mode_new_control.throttle_control();
     G_Dt = scheduler.get_last_loop_time_s();
-    if (control_mode == Mode::Number::NEW_CONTROL){
-        mode_new_control.run_custom_pos();
-        mode_new_control.get_custom_throttle();
-    }
+    // if (control_mode == Mode::Number::NEW_CONTROL){
+    //     mode_new_control.run_custom_pos();
+    //     mode_new_control.get_custom_throttle();
+    // }
 }
 
 // schedule at 100Hz
-// void Copter::custom_loop(){
-//     if (control_mode == Mode::Number::NEW_CONTROL){
-//         mode_new_control.run_custom_pos();
-//         mode_new_control.get_custom_throttle();
-//     }
-// }
+void Copter::custom_pos_loop(){
+    if (control_mode == Mode::Number::NEW_CONTROL){
+        mode_new_control.run_custom_pos();
+    }
+}
+void Copter::custom_throttle_loop(){
+    if (control_mode == Mode::Number::NEW_CONTROL){
+        mode_new_control.get_custom_throttle();
+    }
+}
 
 // Main loop - 400hz
 void Copter::fast_loop()
