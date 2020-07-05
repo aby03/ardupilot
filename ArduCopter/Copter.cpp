@@ -232,8 +232,19 @@ void Copter::loop()
     scheduler.loop();
     //mode_new_control.throttle_control();
     G_Dt = scheduler.get_last_loop_time_s();
-    // copter.pos_control->update_z_controller();
+    if (control_mode == Mode::Number::NEW_CONTROL){
+        mode_new_control.run_custom_pos();
+        mode_new_control.get_custom_throttle();
+    }
 }
+
+// schedule at 100Hz
+// void Copter::custom_loop(){
+//     if (control_mode == Mode::Number::NEW_CONTROL){
+//         mode_new_control.run_custom_pos();
+//         mode_new_control.get_custom_throttle();
+//     }
+// }
 
 // Main loop - 400hz
 void Copter::fast_loop()

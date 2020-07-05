@@ -1,29 +1,22 @@
 #include "Copter.h"
 
+#include <AP_Math/AP_Math.h>
+
 #include <AP_Motors/AP_MotorsMulticopter.h>
 #include <AP_Motors/AP_Motors.h>
-#include <stdio.h> // For printf statements
-// #include <fstream>
-// #include <iostream>
 
 // COMMANDS: To get roll pitch yaw, throttle
 // channel_roll->get_control_in();   channel_pitch->get_control_in();   channel_yaw->get_control_in();  channel_throttle->get_control_in();   get_pilot_desired_throttle()
-
 // COMMANDS: To set roll pitch
 // channel_roll->set_control_in(<float value>);   channel_pitch->set_control_in(<float value>);   channel_yaw->set_control_in(<float value>);
-	
-//const AP_InertialNav&       _inav;
-//const AP_InertialNav&       inav;
-//_inav(inav);
 
 
 /*
 ./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=192.168.184.1./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=127.0.0.1
 */
-FILE *fptr;
-// ofstream outfile;
+FILE *fptr;	// To open file and write it for plotting
 
-// REMOVE LATER
+// Attitude Control
 int HOVER_THROTTLE_OFFSET = 100;
 int roll_i = 0, pitch_i = 1, yaw_i = 2, throttle_i = 3;
 int roll_rate_i = 4, pitch_rate_i = 5, yaw_rate_i = 6;
@@ -33,7 +26,7 @@ float current[7]; // , current_rate[7];
 float pulse_width[4];
 float pulse_width_max[4];
 float pulse_width_min[4];
-float error[7];
+float error_rpyt[7];
 float error_sum[7];
 float error_min[7];
 float error_max[7];
@@ -72,7 +65,7 @@ float vel_max = 250;
 float vel_min = -250;
 //pos_control->set_alt_target(target_z); // Line not able to call
 // Altitude target set
-float target_z = 3000.0f; //in cm according to inbuilt code 
+float target_z = 0.0f; //in cm according to inbuilt code 
 
 float curr_alt = 0.0;
 float error_z = 0.0;
@@ -95,7 +88,60 @@ float prev_accel = 0.0;
 float thr_out = 0.0;
 float accel_gnd = 0;
 
+// Pos Control
+// parameters
+float    _wp_speed_cms = 500.0f;          // default maximum horizontal speed in cm/s during missions
+float    _wp_speed_up_cms = 250.0f;       // default maximum climb rate in cm/s
+float    _wp_speed_down_cms = 150.0f;     // default maximum descent rate in cm/s
+float    _wp_radius_cm = 200.0f;          // distance from a waypoint in cm that, when crossed, indicates the wp has been reached
+float    _wp_accel_cmss = 100.0f;          // horizontal acceleration in cm/s/s during missions
+float    _wp_accel_z_cmss = 100.0f;        // vertical acceleration in cm/s/s during missions
+
+Vector3f    _pos_target;            // target location in cm from home
+Vector3f    _pos_error;             // error between desired and actual position in cm
+Vector3f    _vel_desired;           // desired velocity in cm/s
+Vector3f    _vel_error;             // error between desired and actual acceleration in cm/s
+Vector3f    _vel_target;            // velocity target in cm/s calculated by pos_to_rate step
+Vector2f    _vehicle_horiz_vel;     // velocity to use if _flags.vehicle_horiz_vel_override is set
+Vector3f    _accel_desired;         // desired acceleration in cm/s/s (feed forward)
+Vector3f    _accel_target;          // acceleration target in cm/s/s
+
+enum SegmentType {
+	SEGMENT_STRAIGHT = 0,
+	SEGMENT_SPLINE = 1
+};
+// flags structure
+struct wpnav_flags {
+	uint8_t reached_destination     : 1;    // true if we have reached the destination
+	uint8_t fast_waypoint           : 1;    // true if we should ignore the waypoint radius and consider the waypoint complete once the intermediate target has reached the waypoint
+	uint8_t slowing_down            : 1;    // true when target point is slowing down before reaching the destination
+	uint8_t recalc_wp_leash         : 1;    // true if we need to recalculate the leash lengths because of changes in speed or acceleration
+	uint8_t new_wp_destination      : 1;    // true if we have just received a new destination.  allows us to freeze the position controller's xy feed forward
+	SegmentType segment_type        : 1;    // active segment is either straight or spline
+	uint8_t wp_yaw_set              : 1;    // true if yaw target has been set
+} _flags;
+
+
+// Gains
+# define POSCONTROL_ACCEL_XY 				   100.0f
+# define POSCONTROL_LEASH_LENGTH_MIN 		   100.0f
+# define POSCONTROL_ACCEL_FILTER_HZ 		   2.0f
+# define POSCONTROL_POS_XY_P                   1.0f    // horizontal position controller P gain default // 1.0f
+# define POSCONTROL_VEL_XY_P                   2.0f    // horizontal velocity controller P gain default // 2.0f
+# define POSCONTROL_VEL_XY_I                   1.0f    // horizontal velocity controller I gain default // 1.0f
+# define POSCONTROL_VEL_XY_D                   0.5f  //0.5f    // horizontal velocity controller D gain default
+# define POSCONTROL_VEL_XY_IMAX                1000.0f // horizontal velocity controller IMAX gain default
+# define POSCONTROL_VEL_XY_FILT_HZ             10.0f    // horizontal velocity controller input filter	// 5.0f
+# define POSCONTROL_VEL_XY_FILT_D_HZ           10.0f    // horizontal velocity controller input filter for D // 5.0f
+# define POSCONTROL_DT_50HZ					   0.01f  // Default: 0.02f
+
+AC_PID_2D _pid_vel_xy = AC_PID_2D(POSCONTROL_VEL_XY_P, POSCONTROL_VEL_XY_I, POSCONTROL_VEL_XY_D, POSCONTROL_VEL_XY_IMAX, POSCONTROL_VEL_XY_FILT_HZ, POSCONTROL_VEL_XY_FILT_D_HZ, POSCONTROL_DT_50HZ);
+
+
+// Debug
 int loop = 0;
+Vector2f print_accel;
+
 /*
  * Init and run calls for stabilize flight mode
  */
@@ -156,7 +202,7 @@ bool ModeNewControl::init(bool ignore_checks)
 	}
 
 	current[throttle_i] = 1000; // 1800
-	
+	start_custom_pos();
 	return true;
 }
 
@@ -171,7 +217,7 @@ void ModeNewControl::run()
     // convert pilot input to lean angles
 	// from mode.cpp, returns lean angles in centi degrees
     // float target_roll, target_pitch;
-    get_pilot_desired_lean_angles(target_roll, target_pitch, copter.aparm.angle_max, copter.aparm.angle_max);
+    // get_pilot_desired_lean_angles(target_roll, target_pitch, copter.aparm.angle_max, copter.aparm.angle_max);
 
     // get pilot's desired yaw rate
 	// from Attitude.cpp, returns yaw rate in centi-degrees per second
@@ -225,12 +271,26 @@ void ModeNewControl::run()
 	// // Throttle from remote control
 	// target_throttle = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET; // For getting throttle from remote control
 
+	Vector3f test_pos = inertial_nav.get_position();
+	loop += 1;
+	if (loop % 100 == 0){
+		printf("Loop: %d X: %f Y: %f Z: %f Ax: %f Ay: %f\n", loop, test_pos.x, test_pos.y, test_pos.z, print_accel.x, print_accel.y);
+		// printf("Loop: %d\n", loop);
+	}
+	if (loop <= 5000){
+		target_z = 3000.0f;
+	}
+	if(loop == 20000){
+		_pos_target.x = 10000.0f;
+		_pos_target.y = 10000.0f;
+	}
+
+	// roll & pitch from pos_control
+	// run_custom_pos();
 	// Throttle from Altitude Control
-	get_custom_throttle();	// Get Final throttle PWM value in target_throttle
-	// if (loop % 100 == 0){
-	// 	printf("Run Working %d\n", loop);
-	// }
-	PID_motors();
+	// get_custom_throttle();	// Get Final throttle PWM value in target_throttle
+	// Attitude Control & Write PWM to motors
+	// PID_motors();
 }
 
 // RANGES:
@@ -242,10 +302,10 @@ void ModeNewControl::run()
 
 void ModeNewControl::PID_motors()
 {
-	loop += 1;	// loop counter for print statements
-	if (loop % 100 == 0){
-		printf("PID Motors Loop Count %d\n", loop);
-	}
+	// loop += 1;	// loop counter for print statements
+	// if (loop % 100 == 0){
+	// 	printf("PID Motors Loop Count %d\n", loop);
+	// }
 
 	//// 1. Get AHRS reading (all angles in radians/seconds)
 	Vector3f gyro_latest = ahrs.get_gyro_latest();
@@ -258,51 +318,51 @@ void ModeNewControl::PID_motors()
 	current[yaw_i] = ToDeg(ahrs.get_yaw());
 
 	//// 1.2. Get Target Attitude (from remote) (COMMENT WHEN NOT USING REMOTE AND USE ALTERNATE)
-	// target[roll_i] = target_roll / 100;
-	// target[pitch_i] = target_pitch / 100;
+	target[roll_i] = target_roll / 100;
+	target[pitch_i] = target_pitch / 100;
 	// target[yaw_rate_i] = target_yaw_rate / 1000;
-	// target[throttle_i] = target_throttle;
+	target[throttle_i] = target_throttle;
 	// target[yaw_i] = current[yaw_i] + target_yaw_rate / 400;
 	
 	//// 1.2. ALTERNATE Auto Set Target
-	target[throttle_i] = target_throttle;
-	if (loop <= 5000){
-		target[roll_i] = 0;
-		target[pitch_i] = 0;
-		target[yaw_i] = 0;
-	}
-	if(loop > 5000){
+	// // target[throttle_i] = target_throttle;
+	// if (loop <= 5000){
+	// 	target[roll_i] = 0;
+	// 	target[pitch_i] = 0;
+	// 	target[yaw_i] = 0;
+	// }
+	// if(loop > 5000){
 	
-	}
-	if (loop > 10000){
-		target[pitch_i] = 20; // change
-		target[roll_i] = 0;
-	}
-	if(loop > 11000){
-		target[yaw_i] = 0; 
-	}
-	if(loop > 20000){
-		target[pitch_i] = 0;
-	}
+	// }
+	// if (loop > 10000){
+	// 	target[pitch_i] = 20; // change
+	// 	target[roll_i] = 0;
+	// }
+	// if(loop > 11000){
+	// 	target[yaw_i] = 0; 
+	// }
+	// if(loop > 20000){
+	// 	target[pitch_i] = 0;
+	// }
 
 
 	current[throttle_i] = target[throttle_i];	// This value used directly in PWM throttle output
 	
 	//// 2. Error Roll Pitch Yaw
-	error[roll_i]     = target[roll_i]     - current[roll_i];
-	error[pitch_i]    = target[pitch_i]    - current[pitch_i];
-	error[yaw_i]      = target[yaw_i]      - current[yaw_i];
+	error_rpyt[roll_i]     = target[roll_i]     - current[roll_i];
+	error_rpyt[pitch_i]    = target[pitch_i]    - current[pitch_i];
+	error_rpyt[yaw_i]      = target[yaw_i]      - current[yaw_i];
 
-	error[yaw_rate_i] = target[yaw_rate_i] - current[yaw_rate_i];
-	error[throttle_i] = target[throttle_i] - current[throttle_i];
+	error_rpyt[yaw_rate_i] = target[yaw_rate_i] - current[yaw_rate_i];
+	error_rpyt[throttle_i] = target[throttle_i] - current[throttle_i];
 	
 	//// Error Sum
-	error_sum[roll_i]     += error[roll_i];
-	error_sum[pitch_i]    += error[pitch_i];
-	error_sum[yaw_i]    += error[yaw_i];
+	error_sum[roll_i]     += error_rpyt[roll_i];
+	error_sum[pitch_i]    += error_rpyt[pitch_i];
+	error_sum[yaw_i]    += error_rpyt[yaw_i];
 
-	error_sum[yaw_rate_i] += error[yaw_rate_i];
-	error_sum[throttle_i] += error[throttle_i];
+	error_sum[yaw_rate_i] += error_rpyt[yaw_rate_i];
+	error_sum[throttle_i] += error_rpyt[throttle_i];
 
 	//// Limit err_correction
 	if (abs(ki[pitch_i]) > 0.0000001)
@@ -333,13 +393,13 @@ void ModeNewControl::PID_motors()
 		// error_sum[yaw_i] = 0;
 	}
 	///// Delta Error
-	delta_err[yaw_i] = error[yaw_i] - prev_error[yaw_i];
-	delta_err[pitch_i] = error[pitch_i] - prev_error[pitch_i];
-	delta_err[roll_i] = error[roll_i] - prev_error[roll_i];
+	delta_err[yaw_i] = error_rpyt[yaw_i] - prev_error[yaw_i];
+	delta_err[pitch_i] = error_rpyt[pitch_i] - prev_error[pitch_i];
+	delta_err[roll_i] = error_rpyt[roll_i] - prev_error[roll_i];
 	
-	prev_error[yaw_i] = error[yaw_i];
-	prev_error[pitch_i] = error[pitch_i];
-	prev_error[roll_i] = error[roll_i];
+	prev_error[yaw_i] = error_rpyt[yaw_i];
+	prev_error[pitch_i] = error_rpyt[pitch_i];
+	prev_error[roll_i] = error_rpyt[roll_i];
 	//-printf("Del Er   R: %f, P: %f, Y: %f\n", delta_err[roll_i], delta_err[pitch_i], delta_err[yaw_i]);
 	
 	
@@ -355,9 +415,9 @@ void ModeNewControl::PID_motors()
 	
 	
 	//// 3. Apply Controller loop on Error
-	pid[yaw_i] = (error[yaw_i]*kp[yaw_i]) + (error_sum[yaw_i]*ki[yaw_i]) + (delta_err[yaw_i]*kd[yaw_i]);
-	pid[pitch_i] = (error[pitch_i]*kp[pitch_i]) + (error_sum[pitch_i]*ki[pitch_i]) + (delta_err[pitch_i]*kd[pitch_i]);
-	pid[roll_i] = (error[roll_i]*kp[roll_i]) + (error_sum[roll_i]*ki[roll_i]) + (delta_err[roll_i]*kd[roll_i]);
+	pid[yaw_i] = (error_rpyt[yaw_i]*kp[yaw_i]) + (error_sum[yaw_i]*ki[yaw_i]) + (delta_err[yaw_i]*kd[yaw_i]);
+	pid[pitch_i] = (error_rpyt[pitch_i]*kp[pitch_i]) + (error_sum[pitch_i]*ki[pitch_i]) + (delta_err[pitch_i]*kd[pitch_i]);
+	pid[roll_i] = (error_rpyt[roll_i]*kp[roll_i]) + (error_sum[roll_i]*ki[roll_i]) + (delta_err[roll_i]*kd[roll_i]);
 	//-printf("PID debug   A: %f, B: %f\n", error[roll_i], kp[roll_i]);
 
 	//-printf("PID fb   R: %f, P: %f, Y: %f\n", pid[roll_i], pid[pitch_i], pid[yaw_i]);
@@ -389,7 +449,7 @@ void ModeNewControl::PID_motors()
 	pulse_width[C] = current[throttle_i] + pid[pitch_i] - pid[yaw_i];		// Front
 	pulse_width[D] = current[throttle_i] - pid[pitch_i] - pid[yaw_i];		// Back	
 
-	//printf("PID Roll i %f, %f\n",pid[roll_i],error[roll_i]);
+	//printf("PID Roll i %f, %f\n",pid[roll_i],error_rpyt[roll_i]);
 
 	// Limit PWM within range
 	if(pulse_width[A] > pulse_width_max[A])
@@ -467,4 +527,209 @@ void ModeNewControl::get_custom_throttle(){
 	fprintf(fptr,"Target: %f Current: %f\n", target_z, curr_alt); // change
 
 	// ABHAY
+}
+
+void ModeNewControl::start_custom_pos(){
+    // check _wp_accel_cmss is reasonable
+    // if (_wp_accel_cmss <= 0) {
+    //     _wp_accel_cmss.set_and_save(WPNAV_ACCELERATION);
+    // }
+
+    // // initialise position controller
+    // pos_control->set_desired_accel_xy(0.0f,0.0f);
+    // pos_control->init_xy_controller();
+    // pos_control->clear_desired_velocity_ff_z();
+
+    // // initialise feed forward velocity to zero
+    // pos_control->set_desired_velocity_xy(0.0f, 0.0f);
+
+    // // initialise position controller speed and acceleration
+    // pos_control->set_max_speed_xy(_wp_speed_cms);
+    // pos_control->set_max_accel_xy(_wp_accel_cmss);
+    // pos_control->set_max_speed_z(-_wp_speed_down_cms, _wp_speed_up_cms);
+    // pos_control->set_max_accel_z(_wp_accel_z_cmss);
+    // pos_control->calc_leash_length_xy();
+    // pos_control->calc_leash_length_z();
+
+    // // initialise yaw heading to current heading target
+    // _flags.wp_yaw_set = false;
+
+	// // ==
+
+	// // Stopping Point
+	// Vector3f stopping_point;
+	// pos_control->get_stopping_point_xy(stopping_point);
+    // pos_control->get_stopping_point_z(stopping_point);
+	// _pid_vel_xy = AC_PID_2D(POSCONTROL_VEL_XY_P, POSCONTROL_VEL_XY_I, POSCONTROL_VEL_XY_D, POSCONTROL_VEL_XY_IMAX, POSCONTROL_VEL_XY_FILT_HZ, POSCONTROL_VEL_XY_FILT_D_HZ, POSCONTROL_DT_50HZ);
+
+	_pid_vel_xy.reset_filter();
+}
+
+
+// limit flags structure
+struct poscontrol_limit_flags {
+	uint8_t pos_up      : 1;    // 1 if we have hit the vertical position leash limit while going up
+	uint8_t pos_down    : 1;    // 1 if we have hit the vertical position leash limit while going down
+	uint8_t vel_up      : 1;    // 1 if we have hit the vertical velocity limit going up
+	uint8_t vel_down    : 1;    // 1 if we have hit the vertical velocity limit going down
+	uint8_t accel_xy    : 1;    // 1 if we have hit the horizontal accel limit
+} _limit;
+// position controller internal variables
+// Parameters
+LowPassFilterVector2f _accel_target_filter; // acceleration target filter
+
+void ModeNewControl::run_custom_pos(){
+
+/// run horizontal position controller correcting position and velocity
+///     converts position (_pos_target) to target velocity (_vel_target)
+///     desired velocity (_vel_desired) is combined into final target velocity
+///     converts desired velocities in lat/lon directions to accelerations in lat/lon frame
+///     converts desired accelerations provided in lat/lon frame to roll/pitch angles
+    float ekfGndSpdLimit, ekfNavVelGainScaler;
+    AP::ahrs_navekf().getEkfControlLimits(ekfGndSpdLimit, ekfNavVelGainScaler); // abhay
+
+    Vector3f curr_pos = inertial_nav.get_position();
+    float kP = ekfNavVelGainScaler * POSCONTROL_POS_XY_P; // scale gains to compensate for noisy optical flow measurement in the EKF
+	//abhay
+    // avoid divide by zero
+    if (kP <= 0.0f) {
+        _vel_target.x = 0.0f;
+        _vel_target.y = 0.0f;
+    } else {
+        // calculate distance error
+        _pos_error.x = _pos_target.x - curr_pos.x;
+        _pos_error.y = _pos_target.y - curr_pos.y;
+
+        // // Constrain _pos_error and target position
+        // // Constrain the maximum length of _vel_target to the maximum position correction velocity
+        // // TODO: replace the leash length with a user definable maximum position correction
+        // if (limit_vector_length(_pos_error.x, _pos_error.y, POSCONTROL_LEASH_LENGTH_MIN)) {
+        //     _pos_target.x = curr_pos.x + _pos_error.x;
+        //     _pos_target.y = curr_pos.y + _pos_error.y;
+        // }
+
+        _vel_target = sqrt_controller(_pos_error, kP, POSCONTROL_ACCEL_XY);
+    }
+
+    // add velocity feed-forward
+    _vel_target.x += _vel_desired.x;
+    _vel_target.y += _vel_desired.y;
+
+    // the following section converts desired velocities in lat/lon directions to accelerations in lat/lon frame
+
+    Vector2f accel_target_pos, vel_xy_p, vel_xy_i, vel_xy_d;
+
+    // // check if vehicle velocity is being overridden
+    // if (_flags.vehicle_horiz_vel_override) {
+    //     _flags.vehicle_horiz_vel_override = false;
+    // } else {
+    //     _vehicle_horiz_vel.x = _inav.get_velocity().x;
+    //     _vehicle_horiz_vel.y = _inav.get_velocity().y;
+    // }
+
+    // check if vehicle velocity is being overridden
+	_vehicle_horiz_vel.x = inertial_nav.get_velocity().x;
+	_vehicle_horiz_vel.y = inertial_nav.get_velocity().y;
+
+    // calculate velocity error
+    _vel_error.x = _vel_target.x - _vehicle_horiz_vel.x;
+    _vel_error.y = _vel_target.y - _vehicle_horiz_vel.y;
+    // TODO: constrain velocity error and velocity target
+
+    // call pi controller
+    _pid_vel_xy.set_input(_vel_error);
+
+    // get p
+    vel_xy_p = _pid_vel_xy.get_p();
+
+    // update i term if we have not hit the accel or throttle limits OR the i term will reduce
+    // TODO: move limit handling into the PI and PID controller
+    if (!_limit.accel_xy) {//abhay
+        vel_xy_i = _pid_vel_xy.get_i();
+    } else {
+        vel_xy_i = _pid_vel_xy.get_i_shrink();
+    }
+
+    // get d
+    vel_xy_d = _pid_vel_xy.get_d();
+
+    // acceleration to correct for velocity error and scale PID output to compensate for optical flow measurement induced EKF noise
+    accel_target_pos.x = (vel_xy_p.x + vel_xy_i.x + vel_xy_d.x) * ekfNavVelGainScaler;//abhay
+    accel_target_pos.y = (vel_xy_p.y + vel_xy_i.y + vel_xy_d.y) * ekfNavVelGainScaler;//abhay
+
+    // // reset accel to current desired acceleration
+    // if (_flags.reset_accel_to_lean_xy) {
+    //     _accel_target_filter.reset(Vector2f(accel_target_pos.x, accel_target_pos.y));
+    //     _flags.reset_accel_to_lean_xy = false;
+    // }
+
+    // filter correction acceleration
+    _accel_target_filter.set_cutoff_frequency(MIN(POSCONTROL_ACCEL_FILTER_HZ, 5.0f * ekfNavVelGainScaler)); //abhay
+    _accel_target_filter.apply(accel_target_pos, _dt);//abhay
+
+    // pass the correction acceleration to the target acceleration output
+    _accel_target.x = _accel_target_filter.get().x;//abhay
+    _accel_target.y = _accel_target_filter.get().y;//abhay
+
+    // Add feed forward into the target acceleration output
+    _accel_target.x += _accel_desired.x;//abhay
+    _accel_target.y += _accel_desired.y;//abhay
+
+    // the following section converts desired accelerations provided in lat/lon frame to roll/pitch angles
+
+    // limit acceleration using maximum lean angles
+    float angle_max = 20.0f * 100.0f;
+    float accel_max = MIN(GRAVITY_MSS * 100.0f * tanf(ToRad(angle_max * 0.01f)), POSCONTROL_ACCEL_XY_MAX);
+    _limit.accel_xy = limit_vector_length(_accel_target.x, _accel_target.y, accel_max);
+
+    // update angle targets that will be passed to stabilize controller
+    accel_to_lean_angles(_accel_target.x, _accel_target.y, target_roll, target_pitch);
+	// Debug
+	print_accel.x = _accel_target.x;
+	print_accel.y = _accel_target.y;
+}
+
+/// Proportional controller with piecewise sqrt sections to constrain second derivative
+Vector3f ModeNewControl::sqrt_controller(const Vector3f& error, float p, float second_ord_lim)
+{
+    if (second_ord_lim < 0.0f || is_zero(second_ord_lim) || is_zero(p)) {
+        return Vector3f(error.x * p, error.y * p, error.z);
+    }
+
+    float linear_dist = second_ord_lim / sq(p);
+    float error_length = norm(error.x, error.y);
+    if (error_length > linear_dist) {
+        float first_order_scale = safe_sqrt(2.0f * second_ord_lim * (error_length - (linear_dist * 0.5f))) / error_length;
+        return Vector3f(error.x * first_order_scale, error.y * first_order_scale, error.z);
+    } else {
+        return Vector3f(error.x * p, error.y * p, error.z);
+    }
+}
+
+// get_lean_angles_to_accel - convert roll, pitch lean angles to lat/lon frame accelerations in cm/s/s
+void ModeNewControl::accel_to_lean_angles(float accel_x_cmss, float accel_y_cmss, float& roll_target, float& pitch_target) const
+{
+    float accel_right, accel_forward;
+
+    // rotate accelerations into body forward-right frame
+    // todo: this should probably be based on the desired heading not the current heading
+    accel_forward = accel_x_cmss * ahrs.cos_yaw() + accel_y_cmss * ahrs.sin_yaw();
+    accel_right = -accel_x_cmss * ahrs.sin_yaw() + accel_y_cmss * ahrs.cos_yaw();
+
+    // update angle targets that will be passed to stabilize controller
+    pitch_target = atanf(-accel_forward / (GRAVITY_MSS * 100.0f)) * (18000.0f / M_PI);
+    float cos_pitch_target = cosf(pitch_target * M_PI / 18000.0f);
+    roll_target = atanf(accel_right * cos_pitch_target / (GRAVITY_MSS * 100.0f)) * (18000.0f / M_PI);
+}
+
+/// limit vector to a given length, returns true if vector was limited
+bool ModeNewControl::limit_vector_length(float& vector_x, float& vector_y, float max_length)
+{
+    float vector_length = norm(vector_x, vector_y);
+    if ((vector_length > max_length) && is_positive(vector_length)) {
+        vector_x *= (max_length / vector_length);
+        vector_y *= (max_length / vector_length);
+        return true;
+    }
+    return false;
 }

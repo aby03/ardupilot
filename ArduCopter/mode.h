@@ -1525,8 +1525,19 @@ public:
     bool allows_arming(bool from_gcs) const override { return true; };
     bool is_autopilot() const override { return false; }
 	
+    // Custom Attitude Control
 	void PID_motors();
+    // Custom Throttle Control
     void get_custom_throttle();
+    // Custom Pos Control
+    void start_custom_pos();
+    void run_custom_pos();
+    // sqrt controller
+    Vector3f sqrt_controller(const Vector3f& error, float p, float second_ord_lim);
+    void accel_to_lean_angles(float accel_x_cmss, float accel_y_cmss, float& roll_target, float& pitch_target) const;
+    bool limit_vector_length(float& vector_x, float& vector_y, float max_length);
+    
+
 protected:
 
     const char *name() const override { return "NEW_CONTROL"; }
