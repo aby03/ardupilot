@@ -17,8 +17,8 @@
 FILE *fptr;	// To open file and write it for plotting
 
 // CONTROL PARAMETERS
-# define POS_CONTROL_ENABLE 1
-# define ALT_CONTROL_ENABLE 1
+# define POS_CONTROL_ENABLE 1	// Disable when pos control not needed
+# define ALT_CONTROL_ENABLE 1	// Disable when alt control not needed
 
 // Attitude Control
 int HOVER_THROTTLE_OFFSET = 100;
@@ -121,8 +121,8 @@ Vector3f    _accel_target;          // acceleration target in cm/s/s
 # define POSCONTROL_VEL_XY_I                   1.0f    // horizontal velocity controller I gain default // 1.0f
 # define POSCONTROL_VEL_XY_D                   0.5f  //0.5f    // horizontal velocity controller D gain default
 # define POSCONTROL_VEL_XY_IMAX                1000.0f // horizontal velocity controller IMAX gain default
-# define POSCONTROL_VEL_XY_FILT_HZ             10.0f    // horizontal velocity controller input filter	// 5.0f
-# define POSCONTROL_VEL_XY_FILT_D_HZ           10.0f    // horizontal velocity controller input filter for D // 5.0f
+# define POSCONTROL_VEL_XY_FILT_HZ             5.0f    // horizontal velocity controller input filter	// 5.0f
+# define POSCONTROL_VEL_XY_FILT_D_HZ           5.0f    // horizontal velocity controller input filter for D // 5.0f
 // # define POSCONTROL_DT_50HZ					   0.01f  // Default: 0.02f
 
 // Debug
@@ -141,18 +141,20 @@ bool ModeNewControl::init(bool ignore_checks)
 	// return true;
 
 	// PID Parameters
-	kp[roll_i] = 0.005;//0.005
-	kp[pitch_i] = 0.005;//0.005
+	kp[roll_i] = 1;			// New Fast: 1 Prev: 0.005
+	kd[roll_i] = 200.0;		// New Fast: 200 Prev: 1.05
+
+	kp[pitch_i] = 1;		//0.005
+	kd[pitch_i] = 200;		//1.01
+
 	kp[yaw_i] = 0.001;//0.001
-	kp[roll_rate_i] = 0;
-	kp[pitch_rate_i] = 0;
-	kp[yaw_rate_i] = 0;
-	
-	kd[roll_i] = 1.05;//1.05
-	kd[pitch_i] = 1.01;//1.01
 	kd[yaw_i] = 1.01; // 1.01
+
+	kp[roll_rate_i] = 0;
 	kd[roll_rate_i] = 0;
+	kp[pitch_rate_i] = 0;
 	kd[pitch_rate_i] = 0;
+	kp[yaw_rate_i] = 0;	
 	kd[yaw_rate_i] = 0;
 	
 	ki[roll_i] = 0;
@@ -167,10 +169,10 @@ bool ModeNewControl::init(bool ignore_checks)
 
 	// PID Variables threshold
 	for (int i = 0; i < 7; i ++ ){
-		pid_max[i] = 400;
-		pid_min[i] = -400;
-		error_min[i] = -400;
-		error_max[i] = 400;
+		pid_max[i] = 600;
+		pid_min[i] = -600;
+		error_min[i] = -600;
+		error_max[i] = 600;
 		prev_error[i] = 0;
 	}
 
@@ -227,14 +229,16 @@ void ModeNewControl::run()
 	loop += 1;
 	if (loop % 100 == 0){
 		printf("Loop: %d X: %f Y: %f Z: %f Ax: %f Ay: %f\n", loop, test_pos.x, test_pos.y, test_pos.z, print_accel.x, print_accel.y);
+		// printf("Loop: %d Roll: %f Tar Roll: %f PID: %f\n", loop, ToDeg(ahrs.get_roll()), target_roll, pid[roll_i]);
 		// printf("Loop: %d\n", loop);
 	}
 	if (loop <= 5000){
-		target_z = 3000.0f;
+		target_z = 1000.0f;
 	}
-	if(loop == 20000){
+	if(loop == 5000){
 		_pos_target.x = 10000.0f;
 		_pos_target.y = 10000.0f;
+		// target_pitch = 20 * 100;
 	}
 
 }
