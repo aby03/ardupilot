@@ -531,39 +531,7 @@ void ModeNewControl::get_custom_throttle(){
 }
 
 void ModeNewControl::start_custom_pos(){
-    // check _wp_accel_cmss is reasonable
-    // if (_wp_accel_cmss <= 0) {
-    //     _wp_accel_cmss.set_and_save(WPNAV_ACCELERATION);
-    // }
-
-    // // initialise position controller
-    // pos_control->set_desired_accel_xy(0.0f,0.0f);
-    // pos_control->init_xy_controller();
-    // pos_control->clear_desired_velocity_ff_z();
-
-    // // initialise feed forward velocity to zero
-    // pos_control->set_desired_velocity_xy(0.0f, 0.0f);
-
-    // // initialise position controller speed and acceleration
-    // pos_control->set_max_speed_xy(_wp_speed_cms);
-    // pos_control->set_max_accel_xy(_wp_accel_cmss);
-    // pos_control->set_max_speed_z(-_wp_speed_down_cms, _wp_speed_up_cms);
-    // pos_control->set_max_accel_z(_wp_accel_z_cmss);
-    // pos_control->calc_leash_length_xy();
-    // pos_control->calc_leash_length_z();
-
-    // // initialise yaw heading to current heading target
-    // _flags.wp_yaw_set = false;
-
-	// // ==
-
-	// // Stopping Point
-	// Vector3f stopping_point;
-	// pos_control->get_stopping_point_xy(stopping_point);
-    // pos_control->get_stopping_point_z(stopping_point);
-	// _pid_vel_xy = AC_PID_2D(POSCONTROL_VEL_XY_P, POSCONTROL_VEL_XY_I, POSCONTROL_VEL_XY_D, POSCONTROL_VEL_XY_IMAX, POSCONTROL_VEL_XY_FILT_HZ, POSCONTROL_VEL_XY_FILT_D_HZ, POSCONTROL_DT_50HZ);
-
-	_pid_vel_xy.reset_filter();
+	// For initialization if needed
 }
 
 
