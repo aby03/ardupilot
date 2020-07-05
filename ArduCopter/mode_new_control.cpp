@@ -16,6 +16,10 @@
 */
 FILE *fptr;	// To open file and write it for plotting
 
+// CONTROL PARAMETERS
+# define POS_CONTROL_ENABLE 1
+# define ALT_CONTROL_ENABLE 1
+
 // Attitude Control
 int HOVER_THROTTLE_OFFSET = 100;
 int roll_i = 0, pitch_i = 1, yaw_i = 2, throttle_i = 3;
@@ -63,7 +67,7 @@ float throttle_in = 0.0;
 float pid_accel = 0.0;
 float vel_max = 250;
 float vel_min = -250;
-//pos_control->set_alt_target(target_z); // Line not able to call
+
 // Altitude target set
 float target_z = 0.0f; //in cm according to inbuilt code 
 
@@ -107,21 +111,6 @@ Vector2f    _vehicle_horiz_vel;     // velocity to use if _flags.vehicle_horiz_v
 Vector3f    _accel_desired;         // desired acceleration in cm/s/s (feed forward)
 Vector3f    _accel_target;          // acceleration target in cm/s/s
 
-enum SegmentType {
-	SEGMENT_STRAIGHT = 0,
-	SEGMENT_SPLINE = 1
-};
-// flags structure
-struct wpnav_flags {
-	uint8_t reached_destination     : 1;    // true if we have reached the destination
-	uint8_t fast_waypoint           : 1;    // true if we should ignore the waypoint radius and consider the waypoint complete once the intermediate target has reached the waypoint
-	uint8_t slowing_down            : 1;    // true when target point is slowing down before reaching the destination
-	uint8_t recalc_wp_leash         : 1;    // true if we need to recalculate the leash lengths because of changes in speed or acceleration
-	uint8_t new_wp_destination      : 1;    // true if we have just received a new destination.  allows us to freeze the position controller's xy feed forward
-	SegmentType segment_type        : 1;    // active segment is either straight or spline
-	uint8_t wp_yaw_set              : 1;    // true if yaw target has been set
-} _flags;
-
 
 // Gains
 # define POSCONTROL_ACCEL_XY 				   100.0f
@@ -135,9 +124,6 @@ struct wpnav_flags {
 # define POSCONTROL_VEL_XY_FILT_HZ             10.0f    // horizontal velocity controller input filter	// 5.0f
 # define POSCONTROL_VEL_XY_FILT_D_HZ           10.0f    // horizontal velocity controller input filter for D // 5.0f
 // # define POSCONTROL_DT_50HZ					   0.01f  // Default: 0.02f
-
-AC_PID_2D _pid_vel_xy = AC_PID_2D(POSCONTROL_VEL_XY_P, POSCONTROL_VEL_XY_I, POSCONTROL_VEL_XY_D, POSCONTROL_VEL_XY_IMAX, POSCONTROL_VEL_XY_FILT_HZ, POSCONTROL_VEL_XY_FILT_D_HZ, POSCONTROL_DT_50HZ);
-
 
 // Debug
 int loop = 0;
@@ -409,45 +395,44 @@ void ModeNewControl::PID_motors()
 }
 
 void ModeNewControl::get_custom_throttle(){
-	loop += 1;
-	// ABHAY
-	accel_gnd = -(ahrs.get_accel_ef_blended().z + GRAVITY_MSS)*100;
-	curr_alt = inertial_nav.get_altitude();
-	const Vector3f&  vel_current = inertial_nav.get_velocity() ;
-	vel_target = AC_AttitudeControl::sqrt_controller(target_z - inertial_nav.get_altitude(), THR_ALT_P, accel_lim, _dt);
-	if (vel_target < vel_min) {
-        vel_target = vel_min;
-        // _limit.vel_down = true;
-    }
-    if (vel_target > vel_max) {
-        vel_target = vel_max;
-        // _limit.vel_up = true;
-    }
-	accel_target = ((vel_target - vel_current.z)*RATE_THR_P);
-	pid_accel = ((accel_target - accel_gnd)*ACCEL_THR_P);//(error_sum_accel*ACCEL_THR_I*_dt) + ((delta_err_accel*ACCEL_THR_D)/_dt);
-	thr_out =  motors->get_throttle_hover() + pid_accel/250;
-	if(thr_out>1)
-	{	thr_out = 1;	}
-	if(thr_out<0)
-	{	thr_out = 0;	}
+	if (ALT_CONTROL_ENABLE){
+		loop += 1;
+		accel_gnd = -(ahrs.get_accel_ef_blended().z + GRAVITY_MSS)*100;
+		curr_alt = inertial_nav.get_altitude();
+		const Vector3f&  vel_current = inertial_nav.get_velocity() ;
+		vel_target = AC_AttitudeControl::sqrt_controller(target_z - inertial_nav.get_altitude(), THR_ALT_P, accel_lim, _dt);
+		if (vel_target < vel_min) {
+			vel_target = vel_min;
+			// _limit.vel_down = true;
+		}
+		if (vel_target > vel_max) {
+			vel_target = vel_max;
+			// _limit.vel_up = true;
+		}
+		accel_target = ((vel_target - vel_current.z)*RATE_THR_P);
+		pid_accel = ((accel_target - accel_gnd)*ACCEL_THR_P);//(error_sum_accel*ACCEL_THR_I*_dt) + ((delta_err_accel*ACCEL_THR_D)/_dt);
+		thr_out =  motors->get_throttle_hover() + pid_accel/250;
+		if(thr_out>1)
+		{	thr_out = 1;	}
+		if(thr_out<0)
+		{	thr_out = 0;	}
 
-	float thr = 1000.0 + thr_out*(2000.0 - 1000.0);	
-	target_throttle = thr;
-	if(loop%100 == 0)
-	{
-		// printf("Current Altitude %f", curr_alt);
-		// printf("| Current Acceleration %f", accel_gnd);
-		// printf("| Current velocity %f",vel_current.z);
-		// printf("| Velocity target %f", vel_target);
-		// printf("| Acceleration Target %f", accel_target);
-		// printf("| PID accel %f", pid_accel);	
-		// printf("| throttle out %f", thr_out);
-		// printf("| Current Throttle %f\n", target_throttle );
+		float thr = 1000.0 + thr_out*(2000.0 - 1000.0);	
+		target_throttle = thr;
+		if(loop%100 == 0)
+		{
+			// printf("Current Altitude %f", curr_alt);
+			// printf("| Current Acceleration %f", accel_gnd);
+			// printf("| Current velocity %f",vel_current.z);
+			// printf("| Velocity target %f", vel_target);
+			// printf("| Acceleration Target %f", accel_target);
+			// printf("| PID accel %f", pid_accel);	
+			// printf("| throttle out %f", thr_out);
+			// printf("| Current Throttle %f\n", target_throttle );
+		}
+
+		fprintf(fptr,"Target: %f Current: %f\n", target_z, curr_alt); // change
 	}
-
-	fprintf(fptr,"Target: %f Current: %f\n", target_z, curr_alt); // change
-
-	// ABHAY
 }
 
 void ModeNewControl::start_custom_pos(){
@@ -460,65 +445,67 @@ void ModeNewControl::start_custom_pos(){
 ///     converts desired velocities in lat/lon directions to accelerations in lat/lon frame
 ///     converts desired accelerations provided in lat/lon frame to roll/pitch angles
 void ModeNewControl::run_custom_pos(){
-	// Get current position
-    Vector3f curr_pos = inertial_nav.get_position();
+	if (POS_CONTROL_ENABLE){
+		// Get current position
+		Vector3f curr_pos = inertial_nav.get_position();
 
-    float kP_pos = POSCONTROL_POS_XY_P; // Kp for P term on pos error
+		float kP_pos = POSCONTROL_POS_XY_P; // Kp for P term on pos error
 
-    // avoid divide by zero
-    if (kP_pos <= 0.0f) {
-        _vel_target.x = 0.0f;
-        _vel_target.y = 0.0f;
-    } else {
-        // calculate distance error
-        _pos_error.x = _pos_target.x - curr_pos.x;
-        _pos_error.y = _pos_target.y - curr_pos.y;
+		// avoid divide by zero
+		if (kP_pos <= 0.0f) {
+			_vel_target.x = 0.0f;
+			_vel_target.y = 0.0f;
+		} else {
+			// calculate distance error
+			_pos_error.x = _pos_target.x - curr_pos.x;
+			_pos_error.y = _pos_target.y - curr_pos.y;
 
-        _vel_target = sqrt_controller(_pos_error, kP_pos, POSCONTROL_ACCEL_XY);
-    }
+			_vel_target = sqrt_controller(_pos_error, kP_pos, POSCONTROL_ACCEL_XY);
+		}
 
-    // the following section converts desired velocities in lat/lon directions to accelerations in lat/lon frame
-    Vector2f accel_target_pos, vel_xy_p, vel_xy_i, vel_xy_d;
+		// the following section converts desired velocities in lat/lon directions to accelerations in lat/lon frame
+		Vector2f accel_target_pos, vel_xy_p, vel_xy_i, vel_xy_d;
 
-    // Current Velocity
-	_vehicle_horiz_vel.x = inertial_nav.get_velocity().x;
-	_vehicle_horiz_vel.y = inertial_nav.get_velocity().y;
+		// Current Velocity
+		_vehicle_horiz_vel.x = inertial_nav.get_velocity().x;
+		_vehicle_horiz_vel.y = inertial_nav.get_velocity().y;
 
-    // calculate velocity error
-    _vel_error.x = _vel_target.x - _vehicle_horiz_vel.x;
-    _vel_error.y = _vel_target.y - _vehicle_horiz_vel.y;
-    // TODO: constrain velocity error and velocity target
+		// calculate velocity error
+		_vel_error.x = _vel_target.x - _vehicle_horiz_vel.x;
+		_vel_error.y = _vel_target.y - _vehicle_horiz_vel.y;
+		// TODO: constrain velocity error and velocity target
 
-    // get p
-    vel_xy_p = _vel_error * POSCONTROL_VEL_XY_P;
+		// get p
+		vel_xy_p = _vel_error * POSCONTROL_VEL_XY_P;
 
-	// Not using I
-	vel_xy_i.x = 0;
-	vel_xy_i.y = 0;
+		// Not using I
+		vel_xy_i.x = 0;
+		vel_xy_i.y = 0;
 
-    // get d
-    vel_xy_d = (_prev_error_vel - _vel_error) * POSCONTROL_VEL_XY_D;
-	_prev_error_vel = _vel_error;
+		// get d
+		vel_xy_d = (_prev_error_vel - _vel_error) * POSCONTROL_VEL_XY_D;
+		_prev_error_vel = _vel_error;
 
-    // acceleration to correct for velocity error and scale PID output to compensate for optical flow measurement induced EKF noise
-    accel_target_pos.x = (vel_xy_p.x + vel_xy_i.x + vel_xy_d.x);//abhay
-    accel_target_pos.y = (vel_xy_p.y + vel_xy_i.y + vel_xy_d.y);//abhay
+		// acceleration to correct for velocity error and scale PID output to compensate for optical flow measurement induced EKF noise
+		accel_target_pos.x = (vel_xy_p.x + vel_xy_i.x + vel_xy_d.x);//abhay
+		accel_target_pos.y = (vel_xy_p.y + vel_xy_i.y + vel_xy_d.y);//abhay
 
-	// Copy to accel target which will be limited based on max acc
-	_accel_target.x = accel_target_pos.x;
-	_accel_target.y = accel_target_pos.y;
+		// Copy to accel target which will be limited based on max acc
+		_accel_target.x = accel_target_pos.x;
+		_accel_target.y = accel_target_pos.y;
 
-    // the following section converts desired accelerations provided in lat/lon frame to roll/pitch angles
-    // limit acceleration using maximum lean angles
-    float angle_max = 20.0f * 100.0f;	// Max angle drone will tilt to go to position
-    float accel_max = MIN(GRAVITY_MSS * 100.0f * tanf(ToRad(angle_max * 0.01f)), POSCONTROL_ACCEL_XY_MAX);
-    limit_vector_length(_accel_target.x, _accel_target.y, accel_max);
+		// the following section converts desired accelerations provided in lat/lon frame to roll/pitch angles
+		// limit acceleration using maximum lean angles
+		float angle_max = 20.0f * 100.0f;	// Max angle drone will tilt to go to position
+		float accel_max = MIN(GRAVITY_MSS * 100.0f * tanf(ToRad(angle_max * 0.01f)), POSCONTROL_ACCEL_XY_MAX);
+		limit_vector_length(_accel_target.x, _accel_target.y, accel_max);
 
-    // update angle targets that will be passed to stabilize controller
-    accel_to_lean_angles(_accel_target.x, _accel_target.y, target_roll, target_pitch);
-	// Debug
-	print_accel.x = _accel_target.x;
-	print_accel.y = _accel_target.y;
+		// update angle targets that will be passed to stabilize controller
+		accel_to_lean_angles(_accel_target.x, _accel_target.y, target_roll, target_pitch);
+		// Debug
+		print_accel.x = _accel_target.x;
+		print_accel.y = _accel_target.y;
+	}
 }
 
 /// Proportional controller with piecewise sqrt sections to constrain second derivative
