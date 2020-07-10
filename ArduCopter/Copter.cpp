@@ -236,7 +236,7 @@ void Copter::loop()
     //mode_new_control.throttle_control();
     G_Dt = scheduler.get_last_loop_time_s();
     // if (control_mode == Mode::Number::NEW_CONTROL){
-    //     mode_new_control.run_custom_pos();
+    //     // mode_new_control.run_custom_pos();
     //     mode_new_control.get_custom_throttle();
     // }
 }
@@ -266,7 +266,7 @@ void Copter::fast_loop()
         // run low level rate controllers that only require IMU data
 		attitude_control->rate_controller_run();
 		// send outputs to the motors library immediately
-		motors_output();
+		// motors_output();
 	}else{
 		// CUSTOM - To override motor controller
 		// Call Custom Controller funtion
@@ -644,7 +644,7 @@ Copter::Copter(void)
     rc_throttle_control_in_filter(1.0f),
     inertial_nav(ahrs),
     param_loader(var_info),
-    flightmode(&mode_new_control)
+    flightmode(&mode_stabilize)
 {
     // init sensor error logging flags
     sensor_health.baro = true;

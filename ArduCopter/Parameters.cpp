@@ -711,6 +711,34 @@ const AP_Param::Info Copter::var_info[] = {
     GOBJECT(osd, "OSD", AP_OSD),
 #endif
 
+// @Param: TARGET_X
+// @DisplayName: Pos Target X
+// @Description: Set Target X for custom position control
+// @Range: -32768 32767
+// @User: Advanced
+GSCALAR(target_x, "TARGET_X", 0),
+
+// @Param: TARGET_Y
+// @DisplayName: Pos Target Y
+// @Description: Set Target Y for custom position control
+// @Range: -32768 32767
+// @User: Advanced
+GSCALAR(target_y, "TARGET_Y", 0),
+
+// @Param: TARGET_Z
+// @DisplayName: Pos Target Z
+// @Description: Set Target Z for custom position control
+// @Range: 0 32767
+// @User: Advanced
+GSCALAR(target_z, "TARGET_Z", 0),
+
+// @Param: C_START
+// @DisplayName: Custom Control Parameter
+// @Description: Use this to start custom pos control mission
+// @Range: -32768 32767
+// @User: Advanced
+GSCALAR(custom_start, "C_START", 0),
+
     // @Group:
     // @Path: Parameters.cpp
     GOBJECT(g2, "",  ParametersG2),

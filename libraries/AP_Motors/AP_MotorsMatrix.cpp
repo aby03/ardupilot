@@ -210,8 +210,6 @@ void AP_MotorsMatrix::output_armed_stabilizing()
                 rp_high = _thrust_rpyt_out[i];
             }
 
-            printf("roll_thrust%f\n",roll_thrust );
-            printf("pitch_thrust%f\n", pitch_thrust);
 
             // Check the maximum yaw control that can be used on this channel
             // Exclude any lost motors if thrust boost is enabled

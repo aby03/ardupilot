@@ -375,6 +375,11 @@ public:
 
         k_param_vehicle = 257, // vehicle common block of parameters
 
+        // Custom Pos Control
+        k_param_target_x,
+        k_param_target_y,
+        k_param_target_z,
+        k_param_custom_start,
         // the k_param_* space is 9-bits in size
         // 511: reserved
     };
@@ -464,6 +469,12 @@ public:
     AP_Float                acro_balance_pitch;
     AP_Int8                 acro_trainer;
     AP_Float                acro_rp_expo;
+
+    // Custom Pos Control
+    AP_Float target_x;
+    AP_Float target_y;
+    AP_Float target_z;
+    AP_Int8  custom_start;
 
     // Note: keep initializers here in the same order as they are declared
     // above.

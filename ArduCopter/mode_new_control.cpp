@@ -5,14 +5,8 @@
 #include <AP_Motors/AP_MotorsMulticopter.h>
 #include <AP_Motors/AP_Motors.h>
 
-/*
-./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=192.168.184.1./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=127.0.0.1
-*/
-FILE *fptr;	// To open file and write it for plotting
 
-// CONTROL PARAMETERS
-# define POS_CONTROL_ENABLE 1	// Disable when pos control not needed
-# define ALT_CONTROL_ENABLE 1	// Disable when alt control not needed
+float target_roll, target_pitch, target_yaw_rate, target_throttle;	// Set these variables via pos control or remote control
 
 // Attitude Control
 int HOVER_THROTTLE_OFFSET = 100;	// for remote control throttle
@@ -32,25 +26,13 @@ float delta_err[7], prev_error[7];
 float pid[7];
 float pid_max[7];
 float pid_min[7];
-
 // PID
 float kp[7], kp_r[4];
 float ki[7], kd_r[4];
 float kd[7], ki_r[4];
 
-float target_roll, target_pitch, target_yaw_rate, target_throttle;	// Set these variables via pos control or remote control
 float cur_roll, cur_pitch, cur_yaw, cur_yaw_rate, cur_throt;
 float err_roll, err_pitch, err_yaw, err_yaw_rate, err_throt;
-
-// Throttle
-// Throttle constants set
-float THR_ALT_P = 1.0f;
-float RATE_THR_P = 1.0f;
-float RATE_THR_I = 0.0f;
-float RATE_THR_D = 0.0f;
-float ACCEL_THR_P = 1.0f;
-float ACCEL_THR_I = 0.0f;
-float ACCEL_THR_D = 0.0f;
 
 float accel_lim = 300.0f;
 float pid_accel_max = accel_lim;
@@ -71,7 +53,7 @@ float vel_target = 0.0;
 float error_vel = 0.0;
 float error_sum_vel = 0.0;
 float delta_err_vel = 0.0;
-float prev_vel = 0.0;
+float prev_vel_err = 0.0;
 float pid_vel = 0.0;
 float accel_target = 0.0;
 float accel_cur = 0.0;
@@ -79,7 +61,7 @@ float error_accel = 0.0;
 float error_sum_accel = 0.0;
 float delta_err_accel = 0.0;
 float prev_accel = 0.0;
-float thr_out = 0.0;
+float thr_pid = 0.0;
 float accel_gnd = 0;
 
 // Pos Control
@@ -94,9 +76,9 @@ Vector2f    _vehicle_horiz_vel;     // velocity to use if _flags.vehicle_horiz_v
 Vector3f    _accel_target;          // acceleration target in cm/s/s
 
 // Gains
-# define POSCONTROL_ACCEL_XY 				   100.0f
-# define POSCONTROL_LEASH_LENGTH_MIN 		   100.0f
-# define POSCONTROL_POS_XY_P                   1.0f    // horizontal position controller P gain default // 1.0f
+# define POSCONTROL_ACCEL_XY 				   100.0f	// 100.0f
+# define POSCONTROL_LEASH_LENGTH_MIN 		   100.0f	// 100.0f
+# define POSCONTROL_POS_XY_P                   0.1f    // horizontal position controller P gain default // 1.0f
 # define POSCONTROL_VEL_XY_P                   2.0f    // horizontal velocity controller P gain default // 2.0f
 # define POSCONTROL_VEL_XY_I                   1.0f    // horizontal velocity controller I gain default // 1.0f
 # define POSCONTROL_VEL_XY_D                   0.5f  //0.5f    // horizontal velocity controller D gain default
@@ -106,14 +88,39 @@ Vector3f    _accel_target;          // acceleration target in cm/s/s
 // Debug
 int loop = 0;
 Vector2f print_accel;
+float thr_raw;
 
+// Throttle
+// Throttle constants set
+float C_THR_ALT_P = 2.5f;
+float C_RATE_THR_P = 20.0f;
+float C_RATE_THR_I = 0.0f;
+float C_RATE_THR_D = 0.0f;
+float C_ACCEL_THR_P = 2.5f;
+float C_ACCEL_THR_I = 0.0f;
+float C_ACCEL_THR_D = 0.0f;
+float PID_ACCEL_SCALE = 10000.0f;
+float CUSTOM_HOVER_OFFSET = 0.558;
+
+/*
+./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=192.168.184.1./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=127.0.0.1
+*/
+FILE *fptr;	// To open file and write it for plotting
+FILE *fptr2;	// To open file and write it for plotting
+
+
+// CONTROL PARAMETERS
+bool POS_CONTROL_ENABLE = 1;	// Disable when pos control not needed
+bool ALT_CONTROL_ENABLE = 1;	// Disable when alt control not needed
+bool REMOTE_CONTROL_ENABLE = 1;
 /*
  * Init and run calls for stabilize flight mode
  */
 bool ModeNewControl::init(bool ignore_checks)
 {
 	loop = 0;
-	fptr = fopen("throttle.txt","w"); // file for plotting
+	fptr = fopen("pitch.txt","w"); // file for plotting
+	// fptr2 = fopen("y.txt","w"); // file for plotting
 
 	// PID Parameters
 	kp[roll_i] = 1;			// New Fast: 1 Prev: 0.005
@@ -174,48 +181,84 @@ bool ModeNewControl::init(bool ignore_checks)
 // should be called at 100hz or more
 void ModeNewControl::run()
 {
-    // apply simple mode transform to pilot inputs
-	// Converts from global pitch roll to drone pitch roll using yaw
-    // update_simple_mode();
-
-    // convert pilot input to lean angles
-	// from mode.cpp, returns lean angles in centi degrees
-    // float target_roll, target_pitch;
-    // get_pilot_desired_lean_angles(target_roll, target_pitch, copter.aparm.angle_max, copter.aparm.angle_max);
-
-    // get pilot's desired yaw rate
-	// from Attitude.cpp, returns yaw rate in centi-degrees per second
-    // target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
-
-    if (!motors->armed()) {
-        // Motors should be Stopped
-        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
-    } else if (copter.ap.throttle_zero) {
-        // Attempting to Land
-        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::GROUND_IDLE);
-    } else {
-        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
-    }
-	
-	// // Throttle from remote control
-	// target_throttle = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET; // For getting throttle from remote control
-
 	Vector3f test_pos = inertial_nav.get_position();
+	Vector3f TARGET_VEC = Vector3f(g.target_x, g.target_y, g.target_z);
+	int control_var = g.custom_start;
+	if (REMOTE_CONTROL_ENABLE || control_var == 9){
+		// Disable Pos Control
+		POS_CONTROL_ENABLE = 0;
+		// apply simple mode transform to pilot inputs
+		// Converts from global pitch roll to drone pitch roll using yaw
+		update_simple_mode();
+
+		// convert pilot input to lean angles
+		// from mode.cpp, returns lean angles in centi degrees
+		get_pilot_desired_lean_angles(target_roll, target_pitch, copter.aparm.angle_max, copter.aparm.angle_max);
+		// Convert to Degrees
+		target_roll = target_roll / 100;
+		target_pitch = target_pitch / 100;
+		// get pilot's desired yaw rate
+		// from Attitude.cpp, returns yaw rate in centi-degrees per second
+		target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());	
+		// Throttle from remote control
+		// target_throttle = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET; // For getting throttle from remote control
+		int throt_remote = channel_throttle->get_control_in();
+		// MISSION PLANNER
+		// if (throt_remote < 600 && throt_remote > 400){
+		// 	// Do nothing
+		// }else{
+		// 	target_z = test_pos.z + (throt_remote - 500); // 484 743 1000
+		// }
+		// AIRSIM
+		if (throt_remote < 753 && throt_remote > 733){
+			// Do nothing
+		}else{
+			target_z = test_pos.z + (throt_remote - 743); // 484 743 1000
+		}
+	}
+
+
+	if (control_var == 0){
+		// Default
+		// if (loop <= 5000){
+		// 	target_z = 1000.0f;
+		// 	// accel_target = 200.0f;
+		// }
+		// if (loop > 3000){
+		// 	target_pitch = 20;
+		// }
+	}else if (control_var == 1){
+		// Param Control mode
+		_pos_target.x = TARGET_VEC.x;
+		_pos_target.y = TARGET_VEC.y;
+		target_z = TARGET_VEC.z;
+	}else if (control_var == 2){
+		if (loop <= 3000){	// Ascend
+			target_z = 1000.0f;
+		}
+		if(loop == 3000){ 	// Go to (10,10)
+			_pos_target.x = 1000.0f;
+			_pos_target.y = 1000.0f;
+			target_pitch = 20 * 100;
+		}
+		// Go to next point
+		if (abs(test_pos.x - 1000) < 100 && abs(test_pos.y - 1000) < 100){
+			_pos_target.x = 1000.0f;
+			_pos_target.y = 0.0f;
+		}
+		// Return to home
+		if (abs(test_pos.x - 1000) < 100 && abs(test_pos.y - 0) < 100){
+			_pos_target.x = 0.0f;
+			_pos_target.y = 0.0f;
+		}
+	}
+
 	loop += 1;
 	if (loop % 100 == 0){
-		printf("Loop: %d X: %f Y: %f Z: %f Ax: %f Ay: %f\n", loop, test_pos.x, test_pos.y, test_pos.z, print_accel.x, print_accel.y);
-		// printf("Loop: %d Roll: %f Tar Roll: %f PID: %f\n", loop, ToDeg(ahrs.get_roll()), target_roll, pid[roll_i]);
-		// printf("Loop: %d\n", loop);
+		printf("Loop: %d X: %f Y: %f Z: %f TarZ: %f Thr_in: %d\n", loop, test_pos.x, test_pos.y, test_pos.z, target_z, channel_throttle->get_control_in());
 	}
-	if (loop <= 5000){
-		target_z = 1000.0f;
-	}
-	if(loop == 5000){
-		_pos_target.x = 10000.0f;
-		_pos_target.y = 10000.0f;
-		// target_pitch = 20 * 100;
-	}
-
+	// Write in File for plot
+	// fprintf(fptr,"Target: %f Current: %f\n", target_pitch, current[pitch_i]);
 }
 
 void ModeNewControl::PID_motors()
@@ -231,8 +274,8 @@ void ModeNewControl::PID_motors()
 	current[yaw_i] = ToDeg(ahrs.get_yaw());
 
 	//// 1.2. Get Target Attitude (from remote) (COMMENT WHEN NOT USING REMOTE AND USE ALTERNATE)
-	target[roll_i] = target_roll / 100;
-	target[pitch_i] = target_pitch / 100;
+	target[roll_i] = target_roll;
+	target[pitch_i] = target_pitch;
 	// target[yaw_rate_i] = target_yaw_rate / 1000;
 	target[throttle_i] = target_throttle;
 	// target[yaw_i] = current[yaw_i] + target_yaw_rate / 400;
@@ -364,11 +407,10 @@ void ModeNewControl::PID_motors()
 
 void ModeNewControl::get_custom_throttle(){
 	if (ALT_CONTROL_ENABLE){
-		loop += 1;
 		accel_gnd = -(ahrs.get_accel_ef_blended().z + GRAVITY_MSS)*100;
 		curr_alt = inertial_nav.get_altitude();
 		const Vector3f&  vel_current = inertial_nav.get_velocity() ;
-		vel_target = AC_AttitudeControl::sqrt_controller(target_z - inertial_nav.get_altitude(), THR_ALT_P, accel_lim, _dt);
+		vel_target = AC_AttitudeControl::sqrt_controller(target_z - inertial_nav.get_altitude(), C_THR_ALT_P, accel_lim, _dt);
 		if (vel_target < vel_min) {
 			vel_target = vel_min;
 			// _limit.vel_down = true;
@@ -377,29 +419,35 @@ void ModeNewControl::get_custom_throttle(){
 			vel_target = vel_max;
 			// _limit.vel_up = true;
 		}
-		accel_target = ((vel_target - vel_current.z)*RATE_THR_P);
-		pid_accel = ((accel_target - accel_gnd)*ACCEL_THR_P);//(error_sum_accel*ACCEL_THR_I*_dt) + ((delta_err_accel*ACCEL_THR_D)/_dt);
-		thr_out =  motors->get_throttle_hover() + pid_accel/250;
-		if(thr_out>1)
-		{	thr_out = 1;	}
-		if(thr_out<0)
-		{	thr_out = 0;	}
+		error_vel = (vel_target - vel_current.z);
+		delta_err_vel = prev_vel_err - error_vel;
+		accel_target = (error_vel*C_RATE_THR_P) + (delta_err_vel*C_RATE_THR_D);
+		prev_vel_err = error_vel;
 
-		float thr = 1000.0 + thr_out*(2000.0 - 1000.0);	
-		target_throttle = thr;
-		if(loop%100 == 0)
-		{
+		error_accel = (accel_target - accel_gnd);
+		delta_err_accel = error_accel - prev_accel;
+		pid_accel = ((error_accel*C_ACCEL_THR_P) + (error_sum_accel*C_ACCEL_THR_I*_dt) + ((delta_err_accel*C_ACCEL_THR_D)/_dt))	/ PID_ACCEL_SCALE;
+		error_sum_accel += error_accel;
+		prev_accel = error_accel;
+		thr_pid =  pid_accel + CUSTOM_HOVER_OFFSET; //+ motors->get_throttle_hover(); 
+		thr_raw = thr_pid;
+		if(thr_pid>1)
+		{	thr_pid = 1;	}
+		if(thr_pid<0)
+		{	thr_pid = 0;	}
+
+		target_throttle = 1000.0 + thr_pid*(2000.0 - 1000.0);
+		// if(loop%100 == 0)
+		// {
 			// printf("Current Altitude %f", curr_alt);
 			// printf("| Current Acceleration %f", accel_gnd);
 			// printf("| Current velocity %f",vel_current.z);
 			// printf("| Velocity target %f", vel_target);
 			// printf("| Acceleration Target %f", accel_target);
 			// printf("| PID accel %f", pid_accel);	
-			// printf("| throttle out %f", thr_out);
+			// printf("| throttle out %f", thr_pid);
 			// printf("| Current Throttle %f\n", target_throttle );
-		}
-
-		fprintf(fptr,"Target: %f Current: %f\n", target_z, curr_alt); // change
+		// }
 	}
 }
 
