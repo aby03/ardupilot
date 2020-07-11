@@ -4,9 +4,27 @@
 
 #include <AP_Motors/AP_MotorsMulticopter.h>
 #include <AP_Motors/AP_Motors.h>
+#include <vector>
 
+// CONTROL PARAMETERS
+bool POS_CONTROL_ENABLE = 1;	// Disable when pos control not needed
+bool ALT_CONTROL_ENABLE = 1;	// Disable when alt control not needed
+bool REMOTE_CONTROL_ENABLE = 0;
+bool REMOTE_POS_ENABLE = 0;
 
-float target_roll, target_pitch, target_yaw_rate, target_throttle;	// Set these variables via pos control or remote control
+std::vector<Vector3f> wp_vec;
+int wp_counter = 0;
+int total_wp = 0;
+float POS_MARGIN = 5.0f;
+
+// Remote Constants;
+float REMOTE_THROT_RATE = 10;
+float REMOTE_YAW_RATE = 1000;
+float REMOTE_XY_RATE = 50;
+//
+int last_control_var = 0;
+
+float target_roll, target_pitch, target_yaw, target_yaw_rate, throttle_mix_custom;	// Set these variables via pos control or remote control
 
 // Attitude Control
 int HOVER_THROTTLE_OFFSET = 100;	// for remote control throttle
@@ -78,7 +96,7 @@ Vector3f    _accel_target;          // acceleration target in cm/s/s
 // Gains
 # define POSCONTROL_ACCEL_XY 				   100.0f	// 100.0f
 # define POSCONTROL_LEASH_LENGTH_MIN 		   100.0f	// 100.0f
-# define POSCONTROL_POS_XY_P                   0.1f    // horizontal position controller P gain default // 1.0f
+# define POSCONTROL_POS_XY_P                   1.0f    // horizontal position controller P gain default // 1.0f
 # define POSCONTROL_VEL_XY_P                   2.0f    // horizontal velocity controller P gain default // 2.0f
 # define POSCONTROL_VEL_XY_I                   1.0f    // horizontal velocity controller I gain default // 1.0f
 # define POSCONTROL_VEL_XY_D                   0.5f  //0.5f    // horizontal velocity controller D gain default
@@ -92,15 +110,15 @@ float thr_raw;
 
 // Throttle
 // Throttle constants set
-float C_THR_ALT_P = 2.5f;
-float C_RATE_THR_P = 20.0f;
+float C_THR_ALT_P = 1.0f;		// MP=2.5f		AIRSIM=1.0f
+float C_RATE_THR_P = 20.0f;		// MP=20.0f		AIRSIM=20.0f
 float C_RATE_THR_I = 0.0f;
 float C_RATE_THR_D = 0.0f;
-float C_ACCEL_THR_P = 2.5f;
+float C_ACCEL_THR_P = 1.0f;		// MP=2.5f;		AIRSIM=20.0f
 float C_ACCEL_THR_I = 0.0f;
 float C_ACCEL_THR_D = 0.0f;
 float PID_ACCEL_SCALE = 10000.0f;
-float CUSTOM_HOVER_OFFSET = 0.558;
+float CUSTOM_HOVER_OFFSET = 0.622; //0.558;
 
 /*
 ./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=192.168.184.1./Tools/autotest/autotest.py build.ArduCopter fly.ArduCopter --map --viewerip=127.0.0.1
@@ -109,10 +127,7 @@ FILE *fptr;	// To open file and write it for plotting
 FILE *fptr2;	// To open file and write it for plotting
 
 
-// CONTROL PARAMETERS
-bool POS_CONTROL_ENABLE = 1;	// Disable when pos control not needed
-bool ALT_CONTROL_ENABLE = 1;	// Disable when alt control not needed
-bool REMOTE_CONTROL_ENABLE = 1;
+
 /*
  * Init and run calls for stabilize flight mode
  */
@@ -131,8 +146,8 @@ bool ModeNewControl::init(bool ignore_checks)
 	kd[pitch_i] = 200;		//1.01
 	ki[pitch_i] = 0;
 
-	kp[yaw_i] = 1;//0.001
-	kd[yaw_i] = 200; // 1.01
+	kp[yaw_i] = 1;	//1;//0.001
+	kd[yaw_i] = 450;	//450; // 1.01
 	ki[yaw_i] = 0;
 
 	kp[roll_rate_i] = 0;
@@ -145,9 +160,6 @@ bool ModeNewControl::init(bool ignore_checks)
 	ki[roll_rate_i] = 0;
 	ki[pitch_rate_i] = 0;
 	ki[yaw_rate_i] = 0;
-	
-	// Write to file PID parameters
-	// fprintf(fptr,"Kp: %f Kd: %f Ki: %f\n", kp[pitch_i], kd[pitch_i], ki[pitch_i]); // change
 
 	// PID Variables threshold
 	for (int i = 0; i < 7; i ++ ){
@@ -174,6 +186,27 @@ bool ModeNewControl::init(bool ignore_checks)
 
 	current[throttle_i] = 1000;
 	start_custom_pos();
+
+	// Waypoint customizer
+	wp_vec.clear();
+	wp_vec.push_back(Vector3f(0.0f, 0.0f, 0.0f));
+	wp_vec.push_back(Vector3f(0.0f, 0.0f, 100.0f));
+	wp_vec.push_back(Vector3f(317.0f, 0.0f, 100.0f));
+	wp_vec.push_back(Vector3f(317.0f, -841.0f, 100.0f));
+	wp_vec.push_back(Vector3f(621.0f, -927.0f, 100.0f));
+	wp_vec.push_back(Vector3f(621.0f, -1857.0f, 100.0f));
+	wp_vec.push_back(Vector3f(168.0f, -1784.0f, 100.0f));
+	// 2
+	wp_vec.push_back(Vector3f(100.0f, -1827.0f, 190.0f));
+	wp_vec.push_back(Vector3f(-184.0f, -1377.0f, 211.0f));
+	wp_vec.push_back(Vector3f(-431.0f, -1045.0f, 183.0f));
+	wp_vec.push_back(Vector3f(-645.0f, -1316.0f, 133.0f));
+	wp_vec.push_back(Vector3f(-913.0f, -1249.0f, 111.0f));
+	wp_vec.push_back(Vector3f(-1113.0f, -937.0f, 160.0f));
+	wp_vec.push_back(Vector3f(-1278.0f, -954.0f, 155.0f));
+	wp_vec.push_back(Vector3f(-940.0f, -207.0f, 180.0f));
+	wp_vec.push_back(Vector3f(-0.0f, -0.0f, 100.0f));
+	total_wp = wp_vec.size();
 	return true;
 }
 
@@ -184,62 +217,94 @@ void ModeNewControl::run()
 	Vector3f test_pos = inertial_nav.get_position();
 	Vector3f TARGET_VEC = Vector3f(g.target_x, g.target_y, g.target_z);
 	int control_var = g.custom_start;
+
+	// RPY_Z Remote Controls (Use MP for input filtering)
 	if (REMOTE_CONTROL_ENABLE || control_var == 9){
 		// Disable Pos Control
 		POS_CONTROL_ENABLE = 0;
-		// apply simple mode transform to pilot inputs
 		// Converts from global pitch roll to drone pitch roll using yaw
 		update_simple_mode();
 
-		// convert pilot input to lean angles
-		// from mode.cpp, returns lean angles in centi degrees
+		// convert pilot input to lean angles from mode.cpp, returns lean angles in centi degrees
 		get_pilot_desired_lean_angles(target_roll, target_pitch, copter.aparm.angle_max, copter.aparm.angle_max);
 		// Convert to Degrees
 		target_roll = target_roll / 100;
 		target_pitch = target_pitch / 100;
-		// get pilot's desired yaw rate
-		// from Attitude.cpp, returns yaw rate in centi-degrees per second
+
+		// get pilot's desired yaw rate from Attitude.cpp, returns yaw rate in centi-degrees per second
 		target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());	
+
 		// Throttle from remote control
-		// target_throttle = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET; // For getting throttle from remote control
+		// throttle_mix_custom = 1000 + channel_throttle->get_control_in() + HOVER_THROTTLE_OFFSET; // For getting throttle from remote control
+
+		// Controlling Height instead of throttle
 		int throt_remote = channel_throttle->get_control_in();
 		// MISSION PLANNER
-		// if (throt_remote < 600 && throt_remote > 400){
+		if (throt_remote > 600 || throt_remote < 400){
+			target_z = test_pos.z + (throt_remote - 500) / REMOTE_THROT_RATE; // 484 743 1000
+		}
+		if (target_yaw_rate > 100 || target_yaw_rate < - 100){
+			target_yaw = current[yaw_i] + target_yaw_rate/ REMOTE_YAW_RATE;
+		}
+
+		// AIRSIM
+		// if (throt_remote < 753 && throt_remote > 733){
 		// 	// Do nothing
 		// }else{
-		// 	target_z = test_pos.z + (throt_remote - 500); // 484 743 1000
+		// 	target_z = test_pos.z + (throt_remote - 743); // 484 743 1000
 		// }
-		// AIRSIM
-		if (throt_remote < 753 && throt_remote > 733){
-			// Do nothing
-		}else{
-			target_z = test_pos.z + (throt_remote - 743); // 484 743 1000
-		}
 	}
 
+	// Remote Pos Hold Mode
+	if (REMOTE_POS_ENABLE || control_var == 8){
+		POS_CONTROL_ENABLE = 1;
+		float throt_remote = channel_throttle->get_control_in();
+		float x_remote = channel_pitch->get_control_in();
+		float y_remote = channel_roll->get_control_in();
+		if (throt_remote < 600 && throt_remote > 400){
+			// Do nothing
+		}else{
+			target_z = test_pos.z + (throt_remote - 500) / REMOTE_THROT_RATE; // 484 743 1000
+		}
+		if (x_remote > 5 || x_remote < -5){
+			_pos_target.x = test_pos.x - (x_remote) / REMOTE_XY_RATE; // 484 743 1000
+		}
+		if (y_remote > 5 || y_remote < -5){
+			_pos_target.y = test_pos.y + (y_remote) / REMOTE_XY_RATE; // 484 743 1000
+		}
+		target_yaw_rate = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
+		if (target_yaw_rate > 100 || target_yaw_rate < - 100){
+			target_yaw = current[yaw_i] + target_yaw_rate/ REMOTE_YAW_RATE;
+		}
+	}
+	// End
 
 	if (control_var == 0){
 		// Default
-		// if (loop <= 5000){
+		// if (loop <= 4000){
 		// 	target_z = 1000.0f;
-		// 	// accel_target = 200.0f;
 		// }
-		// if (loop > 3000){
-		// 	target_pitch = 20;
+		// if (loop > 4000){
+		// 	target_yaw = 30;
 		// }
 	}else if (control_var == 1){
 		// Param Control mode
+		POS_CONTROL_ENABLE = 1;
 		_pos_target.x = TARGET_VEC.x;
 		_pos_target.y = TARGET_VEC.y;
 		target_z = TARGET_VEC.z;
 	}else if (control_var == 2){
+		// Execute Triangle
+		POS_CONTROL_ENABLE = 1;
+		if (control_var != last_control_var){
+			loop = 0;
+		}
 		if (loop <= 3000){	// Ascend
 			target_z = 1000.0f;
 		}
 		if(loop == 3000){ 	// Go to (10,10)
 			_pos_target.x = 1000.0f;
 			_pos_target.y = 1000.0f;
-			target_pitch = 20 * 100;
 		}
 		// Go to next point
 		if (abs(test_pos.x - 1000) < 100 && abs(test_pos.y - 1000) < 100){
@@ -251,14 +316,35 @@ void ModeNewControl::run()
 			_pos_target.x = 0.0f;
 			_pos_target.y = 0.0f;
 		}
+	}else if (control_var == 7){
+		// WP Navigation
+		if (control_var != last_control_var){
+			wp_counter = 0;
+		}
+		// Check WP reached
+		if (wp_counter < total_wp){
+			if ((abs(test_pos.x - wp_vec[wp_counter].x) < POS_MARGIN) && (abs(test_pos.y - wp_vec[wp_counter].y) < POS_MARGIN) && (abs(test_pos.z - wp_vec[wp_counter].z) < POS_MARGIN)){
+				wp_counter = wp_counter + 1;
+			}
+			// Set next WP
+			if (wp_counter < total_wp){
+				_pos_target.x = wp_vec[wp_counter].x;
+				_pos_target.y = wp_vec[wp_counter].y;
+				target_z = wp_vec[wp_counter].z;
+			}
+		}
 	}
 
 	loop += 1;
 	if (loop % 100 == 0){
-		printf("Loop: %d X: %f Y: %f Z: %f TarZ: %f Thr_in: %d\n", loop, test_pos.x, test_pos.y, test_pos.z, target_z, channel_throttle->get_control_in());
+		printf("Loop: %d X: %f TarX: %f Y: %f TarY: %f Z: %f TarZ: %f Con: %d WP: %d\n", loop, test_pos.x, _pos_target.x, test_pos.y, _pos_target.y, test_pos.z, target_z, control_var, wp_counter);
+		// printf("Loop: %d Z: %f TarZ: %f Thr: %f\n", loop, test_pos.z, target_z, thr_pid);
+		// printf("Loop: %d X: %f Y: %f Z: %f TarZ: %f Thr_in: %d\n", loop, test_pos.x, test_pos.y, test_pos.z, target_z, channel_throttle->get_control_in());
 	}
 	// Write in File for plot
+	fprintf(fptr,"Loop: %d X: %f TarX: %f Y: %f TarY: %f Z: %f TarZ: %f Con: %d WP: %d\n", loop, test_pos.x, _pos_target.x, test_pos.y, _pos_target.y, test_pos.z, target_z, control_var, wp_counter);
 	// fprintf(fptr,"Target: %f Current: %f\n", target_pitch, current[pitch_i]);
+	last_control_var = control_var;
 }
 
 void ModeNewControl::PID_motors()
@@ -273,17 +359,10 @@ void ModeNewControl::PID_motors()
 	current[pitch_i] = ToDeg(ahrs.get_pitch());
 	current[yaw_i] = ToDeg(ahrs.get_yaw());
 
-	//// 1.2. Get Target Attitude (from remote) (COMMENT WHEN NOT USING REMOTE AND USE ALTERNATE)
+	//// 1.2. Get Target Attitude (in degrees)
 	target[roll_i] = target_roll;
 	target[pitch_i] = target_pitch;
-	// target[yaw_rate_i] = target_yaw_rate / 1000;
-	target[throttle_i] = target_throttle;
-	// target[yaw_i] = current[yaw_i] + target_yaw_rate / 400;
-	
-	//// 1.2. ALTERNATE Auto Set Target (Only for debug) (add target based on loop count here)
-
-
-	current[throttle_i] = target[throttle_i];	// This value used directly in PWM throttle output
+	target[yaw_i] = target_yaw;
 	
 	//// 2. Error Roll Pitch Yaw
 	error_rpyt[roll_i]     = target[roll_i]     - current[roll_i];
@@ -291,7 +370,7 @@ void ModeNewControl::PID_motors()
 	error_rpyt[yaw_i]      = target[yaw_i]      - current[yaw_i];
 
 	error_rpyt[yaw_rate_i] = target[yaw_rate_i] - current[yaw_rate_i];
-	error_rpyt[throttle_i] = target[throttle_i] - current[throttle_i];
+	// error_rpyt[throttle_i] = target[throttle_i] - current[throttle_i];
 	
 	//// Error Sum
 	error_sum[roll_i]     += error_rpyt[roll_i];
@@ -299,7 +378,7 @@ void ModeNewControl::PID_motors()
 	error_sum[yaw_i]    += error_rpyt[yaw_i];
 
 	error_sum[yaw_rate_i] += error_rpyt[yaw_rate_i];
-	error_sum[throttle_i] += error_rpyt[throttle_i];
+	// error_sum[throttle_i] += error_rpyt[throttle_i];
 
 	//// Limit err_correction
 	if (abs(ki[pitch_i]) > 0.0000001)
@@ -358,7 +437,16 @@ void ModeNewControl::PID_motors()
 	{	pid[roll_i] = pid_max[roll_i];	}
 	if(pid[roll_i] < pid_min[roll_i])
 	{	pid[roll_i] = pid_min[roll_i];	}
-	
+
+	mix_and_output();
+}
+
+void ModeNewControl::mix_and_output(){
+	// Get Throttle
+	target[throttle_i] = throttle_mix_custom;
+	current[throttle_i] = target[throttle_i];	// This value used directly in PWM throttle output
+
+	// Motor Mixing Equations Start
 	//// X Frame
 	// pulse_width[A] = current[throttle_i] - pid[roll_i]-pid[pitch_i]+pid[yaw_rate_i];		// Front Right	()	
 	// pulse_width[B] = current[throttle_i] + pid[roll_i]-pid[pitch_i]-pid[yaw_rate_i];		// Front Left
@@ -370,6 +458,7 @@ void ModeNewControl::PID_motors()
 	pulse_width[B] = current[throttle_i] + pid[roll_i] + pid[yaw_i];		// Left
 	pulse_width[C] = current[throttle_i] + pid[pitch_i] - pid[yaw_i];		// Front
 	pulse_width[D] = current[throttle_i] - pid[pitch_i] - pid[yaw_i];		// Back	
+	// Motor Mixing Equations End
 
 	// Limit PWM within range
 	if(pulse_width[A] > pulse_width_max[A])
@@ -402,7 +491,6 @@ void ModeNewControl::PID_motors()
 	SRV_Channels::cork();				// cork now, so that all channel outputs happen at once
 	SRV_Channels::output_ch_all();		// update output on any aux channels, for manual passthru
 	SRV_Channels::push();				// push all channels	
-
 }
 
 void ModeNewControl::get_custom_throttle(){
@@ -436,18 +524,7 @@ void ModeNewControl::get_custom_throttle(){
 		if(thr_pid<0)
 		{	thr_pid = 0;	}
 
-		target_throttle = 1000.0 + thr_pid*(2000.0 - 1000.0);
-		// if(loop%100 == 0)
-		// {
-			// printf("Current Altitude %f", curr_alt);
-			// printf("| Current Acceleration %f", accel_gnd);
-			// printf("| Current velocity %f",vel_current.z);
-			// printf("| Velocity target %f", vel_target);
-			// printf("| Acceleration Target %f", accel_target);
-			// printf("| PID accel %f", pid_accel);	
-			// printf("| throttle out %f", thr_pid);
-			// printf("| Current Throttle %f\n", target_throttle );
-		// }
+		throttle_mix_custom = 1000.0 + thr_pid*(2000.0 - 1000.0);
 	}
 }
 
@@ -550,10 +627,10 @@ void ModeNewControl::accel_to_lean_angles(float accel_x_cmss, float accel_y_cmss
     accel_forward = accel_x_cmss * ahrs.cos_yaw() + accel_y_cmss * ahrs.sin_yaw();
     accel_right = -accel_x_cmss * ahrs.sin_yaw() + accel_y_cmss * ahrs.cos_yaw();
 
-    // update angle targets that will be passed to stabilize controller
-    pitch_target = atanf(-accel_forward / (GRAVITY_MSS * 100.0f)) * (18000.0f / M_PI);
+    // update angle targets that will be passed to stabilize controller (Angles are in degrees)
+    pitch_target = atanf(-accel_forward / (GRAVITY_MSS * 100.0f)) * (180.0f / M_PI);
     float cos_pitch_target = cosf(pitch_target * M_PI / 18000.0f);
-    roll_target = atanf(accel_right * cos_pitch_target / (GRAVITY_MSS * 100.0f)) * (18000.0f / M_PI);
+    roll_target = atanf(accel_right * cos_pitch_target / (GRAVITY_MSS * 100.0f)) * (180.0f / M_PI);
 }
 
 /// limit vector to a given length, returns true if vector was limited

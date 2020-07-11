@@ -1525,6 +1525,8 @@ public:
     bool allows_arming(bool from_gcs) const override { return true; };
     bool is_autopilot() const override { return false; }
 	
+    // Motor Mixing
+    void mix_and_output();
     // Custom Attitude Control
 	void PID_motors();
     // Custom Throttle Control

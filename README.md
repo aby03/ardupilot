@@ -1,12 +1,56 @@
-# ArduPilot Project
+# Customized Ardupilot for Control Loops Testing
 
-[![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/ArduPilot/ardupilot?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+Ardupilot firmware is used to control and manage unmanned vehicles and supports various controller boards. We have customized the firmware so that it can be used for control loops testing for quadrotor drones. The control loops are split into 3 parts.
 
-[![Build Travis](https://travis-ci.org/ArduPilot/ardupilot.svg?branch=master)](https://travis-ci.org/ArduPilot/ardupilot) [![Build SemaphoreCI](https://semaphoreci.com/api/v1/ardupilot/ardupilot/branches/master/badge.svg)](https://semaphoreci.com/ardupilot/ardupilot) [![Build Status](https://dev.azure.com/ardupilot-org/ardupilot/_apis/build/status/ArduPilot.ardupilot?branchName=master)](https://dev.azure.com/ardupilot-org/ardupilot/_build/latest?definitionId=1&branchName=master)
+The customized ardupilot firmware retains all the original ardupilot modes with a new mode called 'Mode New Control' which has its own modeular control loops different. They have been separated to allow easy modification to each one of them.
 
-[![Coverity Scan Build Status](https://scan.coverity.com/projects/5331/badge.svg)](https://scan.coverity.com/projects/ardupilot-ardupilot)
+Following flow is followed:
 
-[![Autotest Status](https://autotest.ardupilot.org/autotest-badge.svg)](https://autotest.ardupilot.org/)
+> (X, Y) ---> Position Controller --- (Roll, Pitch, Yaw) ---> Attitude Controller --- (PID feedbacks) ---> Motor Mixing Matrix\
+> (Z) ---> Altitude Controller --- (Throttle) ---> Motor Mixing Matrix
+
+## Motor Mixing Matrix
+Following function contains motor mixing matrix. We have included equations for plus frame and cross frames of Quad Copter. Other frames can be added there if needed.
+
+> **Input**: float throttle_mix_custom, pid[roll_i], pid[pitch_i], pid[yaw_i]\
+> **Output**: (Writes PWM to motors)
+
+
+> void ModeNewControl::mix_and_output(){\
+> &nbsp;&nbsp;&nbsp;&nbsp;...\
+> }
+
+## Attitude Control
+The attitude control takes Roll, Pitch and Yaw as input and applies PID on it to get feedbacks which is passed into motor mixing matrix. This can be modified in the following function:
+
+> **Input**: float target_roll, target_pitch, target_yaw (Values in degrees)\
+> **Output**: float pid[roll_i], pid[pitch_i], pid[yaw_i]
+
+> void ModeNewControl::PID_motors(){\
+> &nbsp;&nbsp;&nbsp;&nbsp;...\
+> }
+
+## Altitude Control
+It takes target altitude as input and outputs throttle which is passed to motor mixing matrix.
+
+> **Input**: float target_z (Values in cms)\
+> **Output**: float throttle_mix_custom
+
+> void ModeNewControl::get_custom_throttle(){\
+> &nbsp;&nbsp;&nbsp;&nbsp;...\
+> }
+
+## Position Control
+It takes target X, Y coordinates from starting position as input and outputs required roll, pitch to attain it.
+
+> **Input**: Vector2f _pos_target (Values in cms)\
+> **Output**: float target_roll, target_pitch (Values in degrees)
+
+> void ModeNewControl::run_custom_pos(){\
+> &nbsp;&nbsp;&nbsp;&nbsp;...\
+> }
+
+# Original Ardupilot Documentation
 
 ## The ArduPilot project is made up of: ##
 
